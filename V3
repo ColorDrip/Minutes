@@ -1,0 +1,88 @@
+import pygetwindow as gw
+import pytesseract
+from PIL import ImageGrab, ImageOps, ImageFilter
+import time
+import re
+
+# Configuration
+WINDOW_TITLE = "Your Window Title Here"  # Update this
+OUTPUT_FILE = "clean_chat_log.txt"
+SCAN_INTERVAL = 1.5
+PYTESSERACT_PATH = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Update this
+AVATAR_OFFSET = 100  Pixels to exclude from left (adjust based on your chat's avatar size)
+
+# Regex patterns
+TIMESTAMP_PATTERN = re.compile(r'\b\d{1,2}:\d{2}(?::\d{2})?\b')
+SPECIAL_CHARS = re.compile(r'[•©®~\\|•♣♥♦♠�]+')
+
+pytesseract.pytesseract.tesseract_cmd = PYTESSERACT_PATH
+previous_lines = set()
+
+def preprocess_image(image):
+    """Enhance text visibility and remove noise"""
+    # Convert to grayscale
+    img = image.convert('L')
+    # Increase contrast
+    img = ImageOps.autocontrast(img)
+    # Remove noise
+    img = img.filter(ImageFilter.MedianFilter(size=3))
+    return img
+
+def clean_text(text):
+    """Clean OCR output"""
+    text = TIMESTAMP_PATTERN.sub('', text)
+    text = SPECIAL_CHARS.sub('', text)
+    return text.strip()
+
+def capture_chat_area():
+    try:
+        win = gw.getWindowsWithTitle(WINDOW_TITLE)[0]
+        if win.isMinimized:
+            return ""
+            
+        # Calculate capture area (exclude left avatar section)
+        x = win.left + AVATAR_OFFSET
+        y = win.top
+        w = win.width - AVATAR_OFFSET
+        h = win.height
+        
+        # Capture and preprocess
+        screenshot = ImageGrab.grab(bbox=(x, y, x + w, y + h))
+        processed_img = preprocess_image(screenshot)
+        
+        # OCR with custom config
+        return pytesseract.image_to_string(
+            processed_img,
+            config='--psm 6 -c tessedit_char_whitelist=" abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.:,\'!?-"'
+        )
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return ""
+
+def log_new_lines():
+    global previous_lines
+    raw_text = capture_chat_area()
+    current_text = clean_text(raw_text)
+    
+    if not current_text:
+        return
+        
+    current_lines = {line.strip() for line in current_text.split('\n') if line.strip()}
+    new_lines = current_lines - previous_lines
+    
+    if new_lines:
+        with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
+            for line in new_lines:
+                f.write(f"{line}\n")
+        print(f"New messages: {len(new_lines)}")
+        
+    previous_lines.update(current_lines)
+
+if __name__ == "__main__":
+    print(f"Monitoring '{WINDOW_TITLE}'. Press Ctrl+C to stop.")
+    try:
+        while True:
+            log_new_lines()
+            time.sleep(SCAN_INTERVAL)
+    except KeyboardInterrupt:
+        print("\nMonitoring stopped")
