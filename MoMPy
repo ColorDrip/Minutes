@@ -1,0 +1,110 @@
+import pygetwindow as gw
+import pytesseract
+from PIL import ImageGrab
+import time
+import re
+import threading
+
+# Configuration
+WINDOW_TITLE = "Your Window Title Here"  # Update with target window title
+OUTPUT_FILE = "chat_log.txt"
+SCAN_INTERVAL = 2  # Seconds between checks
+PYTESSERACT_PATH = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Update Tesseract path
+
+# Text cleaning configurations
+TIME_PATTERN = re.compile(r'^\d{1,2}:\d{2}(?::\d{2})?\b')  # Matches time prefixes
+OCR_CLEANUP = {  # Common OCR mistakes replacement dictionary
+    '|': 'I', '‘': "'", '’': "'", '``': '"', '""': '"',
+    '©': 'c', '®': 'r', '•': '*', '~': '-', '\\': '/',
+    '[$]': 'S', '£': '#', '¥': 'Y', '©': '(c)', '¼': '1/4'
+}
+
+# Get initial username
+USERNAME = input("Enter your username: ").strip() or "Anonymous"
+print(f"\nStarting chat logger for: {USERNAME}")
+print(f"Monitoring window: {WINDOW_TITLE}")
+print("Press Ctrl+C to exit\n")
+
+pytesseract.pytesseract.tesseract_cmd = PYTESSERACT_PATH
+previous_text = ""
+previous_lines = []
+
+def clean_ocr_text(text):
+    """Clean common OCR errors and remove time prefixes"""
+    # Remove lines starting with time
+    cleaned_lines = []
+    for line in text.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        # Remove time prefixes
+        line = TIME_PATTERN.sub('', line).strip()
+        # Replace common OCR errors
+        for wrong, correct in OCR_CLEANUP.items():
+            line = line.replace(wrong, correct)
+        if line:
+            cleaned_lines.append(line)
+    return '\n'.join(cleaned_lines)
+
+def get_window_text():
+    """Capture and OCR window content"""
+    try:
+        win = gw.getWindowsWithTitle(WINDOW_TITLE)[0]
+        if win.isMinimized:
+            win.restore()
+        
+        # Capture window content
+        x, y, w, h = win.left, win.top, win.width, win.height
+        screenshot = ImageGrab.grab(bbox=(x, y, x + w, y + h))
+        raw_text = pytesseract.image_to_string(screenshot)
+        
+        return clean_ocr_text(raw_text)
+    except IndexError:
+        print(f"\n[ERROR] Window '{WINDOW_TITLE}' not found!")
+        return ""
+    except Exception as e:
+        print(f"\n[ERROR] {str(e)}")
+        return ""
+
+def save_new_lines(current_text):
+    """Save new messages with username prefix"""
+    global previous_text, previous_lines
+    
+    if current_text == previous_text or not current_text:
+        return
+    
+    current_lines = current_text.split('\n')
+    new_entries = []
+    
+    for line in current_lines:
+        clean_line = line.strip()
+        if clean_line and clean_line not in previous_lines:
+            new_entries.append(f"{USERNAME}: {clean_line}")
+    
+    if new_entries:
+        with open(OUTPUT_FILE, 'a', encoding='utf-8') as f:
+            f.write('\n'.join(new_entries) + '\n')
+        print(f"Logged {len(new_entries)} new messages", end='\r')
+    
+    previous_text = current_text
+    previous_lines = current_lines[-50:]  # Keep last 50 lines for duplicate check
+
+def username_updater():
+    """Thread for updating username during runtime"""
+    global USERNAME
+    while True:
+        new_name = input("\nEnter new username (or press Enter to keep current): ").strip()
+        if new_name:
+            USERNAME = new_name
+            print(f"Username updated to: {USERNAME}")
+
+if __name__ == "__main__":
+    # Start username update thread
+    threading.Thread(target=username_updater, daemon=True).start()
+    
+    # Main monitoring loop
+    while True:
+        current_text = get_window_text()
+        if current_text:
+            save_new_lines(current_text)
+        time.sleep(SCAN_INTERVAL)
