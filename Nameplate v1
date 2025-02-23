@@ -1,0 +1,104 @@
+import cv2
+import pytesseract
+import numpy as np
+import os
+
+# Set Tesseract path (if needed)
+# pytesseract.pytesseract.tesseract_cmd = r'<your_tesseract_path>'
+
+def preprocess_image(img):
+    """Enhanced image preprocessing for license plates"""
+    # Convert to grayscale
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # Noise reduction
+    denoised = cv2.fastNlMeansDenoising(gray, h=10, templateWindowSize=7, searchWindowSize=21)
+    
+    # Contrast enhancement
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+    contrast = clahe.apply(denoised)
+    
+    # Adaptive thresholding
+    thresh = cv2.adaptiveThreshold(contrast, 255, 
+                                  cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                  cv2.THRESH_BINARY_INV, 11, 2)
+    
+    # Morphological operations
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+    processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
+    
+    return processed
+
+def detect_plate(image):
+    """Try to isolate license plate region"""
+    # Edge detection
+    edges = cv2.Canny(image, 50, 150)
+    
+    # Find contours
+    contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # Filter contours by aspect ratio and area
+    plates = []
+    for cnt in contours:
+        x,y,w,h = cv2.boundingRect(cnt)
+        aspect_ratio = w / float(h)
+        area = w * h
+        
+        if 2 < aspect_ratio < 6 and area > 2000:
+            plates.append((x,y,w,h))
+    
+    # Select the most probable plate region
+    if plates:
+        return sorted(plates, key=lambda p: p[2]*p[3], reverse=True)[0]
+    return None
+
+def read_license_plate(image_path):
+    img = cv2.imread(image_path)
+    if img is None:
+        return None
+    
+    # Detect plate region
+    plate_region = detect_plate(img)
+    if plate_region:
+        x,y,w,h = plate_region
+        cropped = img[y:y+h, x:x+w]
+    else:
+        cropped = img  # Fallback to full image
+    
+    processed = preprocess_image(cropped)
+    
+    # Custom OCR configuration for license plates
+    config = (
+        '-l eng --oem 3 --psm 7 '
+        '-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 '
+        '-c tessedit_char_blacklist=abcdefghijklmnopqrstuvwxyz!@#$%^&*()_+{}|:"<>?~`'
+    )
+    
+    text = pytesseract.image_to_string(processed, config=config)
+    return postprocess_text(text)
+
+def postprocess_text(text):
+    """Clean up recognized text"""
+    # Remove invalid characters and format
+    clean = ''.join(c for c in text.upper() if c.isalnum())
+    
+    # Common license plate format heuristics
+    if len(clean) == 10 and clean[2].isalpha() and clean[6].isalpha():
+        return f"{clean[:2]}-{clean[2:6]}-{clean[6:]}"
+    if len(clean) == 4 and clean.isdigit():
+        return clean
+    return clean
+
+def process_images(input_dir, output_file):
+    with open(output_file, 'w') as f:
+        for filename in os.listdir(input_dir):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                path = os.path.join(input_dir, filename)
+                result = read_license_plate(path)
+                if result:
+                    f.write(f"{filename}: {result}\n")
+                else:
+                    f.write(f"{filename}: Not recognized\n")
+
+# Usage
+process_images('images/', 'results.txt')
