@@ -1,0 +1,49 @@
+import cv2
+import pytesseract
+import os
+
+# Uncomment below line for Windows and provide your Tesseract path
+# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+
+def process_license_plates(input_dir, output_file):
+    """
+    Process images in input directory and save recognized text to output file
+    """
+    # Validate input directory
+    if not os.path.exists(input_dir):
+        print(f"Error: Input directory '{input_dir}' not found")
+        return
+
+    # Process each image in directory
+    with open(output_file, 'w') as f:
+        for filename in os.listdir(input_dir):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                image_path = os.path.join(input_dir, filename)
+                image = cv2.imread(image_path)
+                
+                if image is None:
+                    print(f"Warning: Could not read image {filename}")
+                    continue
+                
+                # Preprocess image
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+                
+                # Configure Tesseract for license plates
+                config = '--oem 3 --psm 11 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+                
+                # Perform OCR
+                text = pytesseract.image_to_string(thresh, config=config)
+                cleaned_text = text.strip().upper()
+                
+                # Write result to file
+                f.write(f"{filename}: {cleaned_text}\n")
+
+    print(f"Processing completed. Results saved to {output_file}")
+
+# Configuration
+INPUT_DIR = 'images/'    # Directory containing license plate images
+OUTPUT_FILE = 'license_plates.txt'  # Output text file
+
+# Run the processing
+process_license_plates(INPUT_DIR, OUTPUT_FILE)
