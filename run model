@@ -1,0 +1,40 @@
+import torch
+import cv2
+import numpy as np
+from PIL import Image
+
+# Load YOLO model
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt', force_reload=True)
+
+# Load the test image
+image_path = 'test.jpg'  # Update with your image path
+img = Image.open(image_path)
+
+# Perform inference
+results = model(img)
+
+# Check the type of results
+print(type(results))
+
+# Convert results to pandas dataframe
+df = results.pandas().xyxy[0]  # Convert detections to DataFrame
+
+# Print the detected objects
+print(df)
+
+# Load image with OpenCV for drawing bounding boxes
+image_cv = cv2.imread(image_path)
+
+# Draw bounding boxes if objects are detected
+for _, row in df.iterrows():
+    x_min, y_min, x_max, y_max = int(row['xmin']), int(row['ymin']), int(row['xmax']), int(row['ymax'])
+    confidence = row['confidence']
+    label = f"{row['name']} {confidence:.2f}"
+
+    cv2.rectangle(image_cv, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+    cv2.putText(image_cv, label, (x_min, y_min - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+# Show the image with detections
+cv2.imshow("Detected Image", image_cv)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
