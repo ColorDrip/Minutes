@@ -1,0 +1,57 @@
+import xml.etree.ElementTree as ET
+import os
+from glob import glob
+
+def convert_voc_to_yolo(xml_file, output_dir, class_mapping):
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+    
+    img_width = int(root.find("size/width").text)
+    img_height = int(root.find("size/height").text)
+    
+    file_name = os.path.splitext(root.find("filename").text)[0] + ".txt"
+    output_path = os.path.join(output_dir, file_name)
+    
+    with open(output_path, "w") as yolo_file:
+        for obj in root.findall("object"):
+            class_name = obj.find("name").text
+            if class_name not in class_mapping:
+                continue
+            
+            class_id = class_mapping[class_name]
+            
+            bbox = obj.find("bndbox")
+            xmin = int(bbox.find("xmin").text)
+            ymin = int(bbox.find("ymin").text)
+            xmax = int(bbox.find("xmax").text)
+            ymax = int(bbox.find("ymax").text)
+
+            # Normalize values (YOLO format requires values between 0 and 1)
+            x_center = (xmin + xmax) / 2 / img_width
+            y_center = (ymin + ymax) / 2 / img_height
+            width = (xmax - xmin) / img_width
+            height = (ymax - ymin) / img_height
+
+            # Write to YOLO label file
+            yolo_file.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
+
+def convert_all_annotations(input_dir, output_dir, class_mapping):
+    os.makedirs(output_dir, exist_ok=True)
+    
+    xml_files = glob(os.path.join(input_dir, "*.xml"))
+    print(f"Found {len(xml_files)} XML annotation files.")
+
+    for xml_file in xml_files:
+        convert_voc_to_yolo(xml_file, output_dir, class_mapping)
+    
+    print("Conversion completed!")
+
+# Define the class mapping (modify if you have multiple classes)
+class_mapping = {"licence": 0}
+
+# Define paths
+input_annotations_dir = "path/to/annotations"  # Folder containing XML files
+output_labels_dir = "path/to/yolo/labels"  # Where YOLO labels will be saved
+
+# Convert all annotations
+convert_all_annotations(input_annotations_dir, output_labels_dir, class_mapping)
