@@ -1,0 +1,74 @@
+from ultralytics import YOLO
+import cv2
+
+# Load your custom-trained YOLO model
+model = YOLO("best.pt")  # Your trained model
+
+def detect_plate(img):
+    results = model(img)
+    boxes = results[0].boxes.xyxy.cpu().numpy()
+    return boxes
+
+import easyocr
+
+reader = easyocr.Reader(['en'])  # Language(s)
+
+def extract_text(cropped_plate):
+    # Preprocess for better OCR (grayscale + threshold)
+    gray = cv2.cvtColor(cropped_plate, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    # OCR
+    results = reader.readtext(thresh, detail=0)
+    return " ".join(results).upper()
+
+import pandas as pd
+from datetime import datetime
+
+def log_to_excel(plate_number):
+    try:
+        df = pd.read_excel("plates.xlsx")
+    except FileNotFoundError:
+        df = pd.DataFrame(columns=["Plate", "Timestamp"])
+    
+    new_entry = pd.DataFrame({
+        "Plate": [plate_number],
+        "Timestamp": [datetime.now().strftime("%Y-%m-%d %H:%M:%S")]
+    })
+    
+    df = pd.concat([df, new_entry], ignore_index=True)
+    df.to_excel("plates.xlsx", index=False)
+
+def process_image(img_path):
+    # Read image
+    img = cv2.imread(img_path)
+    
+    # Detect license plate
+    boxes = detect_plate(img)
+    
+    for box in boxes:
+        x1, y1, x2, y2 = map(int, box)
+        cropped = img[y1:y2, x1:x2]
+        
+        # OCR
+        plate_text = extract_text(cropped)
+        print(f"Detected Plate: {plate_text}")
+        
+        # Save to Excel
+        if plate_text:
+            log_to_excel(plate_text)
+            
+    # Display result
+    cv2.imshow("Result", img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+# Run the pipeline
+process_image("car.jpg")
+
+cap = cv2.VideoCapture(0)  # Webcam
+while True:
+    ret, frame = cap.read()
+    process_image(frame)
+    if cv2.waitKey(1) == 27:  # ESC to exit
+        break
