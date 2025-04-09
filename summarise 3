@@ -1,0 +1,62 @@
+import re
+from collections import OrderedDict
+from difflib import SequenceMatcher
+
+def clean_transcript(text):
+    """Remove near-duplicate lines using sequence matching"""
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    unique_lines = []
+    
+    for line in lines:
+        # Check against previous lines for similarity
+        is_duplicate = False
+        for prev_line in unique_lines[-3:]:  # Compare with last 3 lines
+            if SequenceMatcher(None, prev_line, line).ratio() > 0.8:
+                is_duplicate = True
+                break
+        if not is_duplicate:
+            unique_lines.append(line)
+    
+    return '\n'.join(unique_lines)
+
+def summarize_text(text, num_sentences=3):
+    """Basic frequency-based summarization"""
+    sentences = re.split(r'(?<!\w\.\w.)(?<![A-Z][a-z]\.)(?<=\.|\?)\s', text)
+    
+    # Calculate word frequencies (excluding stopwords)
+    stopwords = set(['the', 'a', 'an', 'in', 'on', 'at', 'and', 'or'])
+    word_freq = {}
+    for sentence in sentences:
+        for word in re.findall(r'\b\w+\b', sentence.lower()):
+            if word not in stopwords:
+                word_freq[word] = word_freq.get(word, 0) + 1
+    
+    # Score sentences
+    scores = []
+    for i, sentence in enumerate(sentences):
+        score = sum(word_freq.get(word.lower(), 0) 
+                   for word in re.findall(r'\b\w+\b', sentence))
+        scores.append((i, score, sentence))
+    
+    # Select top sentences in order
+    sorted_sentences = sorted(scores, key=lambda x: x[1], reverse=True)
+    top_indices = set([s[0] for s in sorted_sentences[:num_sentences]])
+    return ' '.join([s[2] for i, s in enumerate(scores) if i in top_indices])
+
+# Full workflow
+def process_file(input_path, output_path):
+    with open(input_path, 'r', encoding='utf-8') as f:
+        text = f.read()
+    
+    cleaned = clean_transcript(text)
+    summary = summarize_text(cleaned)
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write("=== Cleaned Text ===\n")
+        f.write(cleaned)
+        f.write("\n\n=== Summary ===\n")
+        f.write(summary)
+
+# Usage
+process_file('transcript.txt', 'output.txt')
+print("Processing complete! Check output.txt")
