@@ -1,0 +1,52 @@
+import re
+from difflib import SequenceMatcher
+
+def is_partial_duplicate(line1, line2):
+    """Check if one line contains most of the other line's content"""
+    line1_clean = re.sub(r'\W+', ' ', line1).strip().lower()
+    line2_clean = re.sub(r'\W+', ' ', line2).strip().lower()
+    
+    # Check if one line is substring of another
+    if line1_clean in line2_clean or line2_clean in line1_clean:
+        return True
+    
+    # Check for significant overlap (60% similarity)
+    ratio = SequenceMatcher(None, line1_clean, line2_clean).ratio()
+    return ratio > 0.6
+
+def clean_consecutive_duplicates(input_path, output_path):
+    with open(input_path, 'r', encoding='utf-8') as f:
+        lines = [line.strip() for line in f.readlines() if line.strip()]
+    
+    cleaned = []
+    skip_next = False
+    
+    for i in range(len(lines)-1):
+        if skip_next:
+            skip_next = False
+            continue
+            
+        current_line = lines[i]
+        next_line = lines[i+1]
+        
+        if is_partial_duplicate(current_line, next_line):
+            # Keep the longer/more detailed line
+            if len(next_line) > len(current_line):
+                cleaned.append(next_line)
+                skip_next = True  # Skip comparison in next iteration
+            else:
+                cleaned.append(current_line)
+                skip_next = True
+        else:
+            cleaned.append(current_line)
+    
+    # Add last line if not processed
+    if not skip_next and lines:
+        cleaned.append(lines[-1])
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(cleaned))
+
+# Usage
+clean_consecutive_duplicates('transcript.txt', 'cleaned_transcript.txt')
+print("Cleaning complete! Check cleaned_transcript.txt")
