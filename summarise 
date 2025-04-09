@@ -1,0 +1,57 @@
+# Required Libraries: pip install nltk sumy
+
+import nltk
+from sumy.parsers.plaintext import PlaintextParser
+from sumy.nlp.tokenizers import Tokenizer
+from sumy.summarizers.lsa import LsaSummarizer
+from sumy.nlp.stemmers import Stemmer
+from sumy.utils import get_stop_words
+
+nltk.download('punkt')
+
+def clean_transcript(input_path, output_path):
+    """Remove duplicate lines from text file"""
+    with open(input_path, 'r') as f:
+        lines = f.readlines()
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    cleaned = []
+    for line in lines:
+        clean_line = line.strip()
+        if clean_line and clean_line not in seen:
+            seen.add(clean_line)
+            cleaned.append(line)
+    
+    with open(output_path, 'w') as f:
+        f.writelines(cleaned)
+    return cleaned
+
+def summarize_text(input_text, sentences=5):
+    """Generate summary using LSA algorithm"""
+    parser = PlaintextParser.from_string(input_text, Tokenizer("english"))
+    stemmer = Stemmer("english")
+    summarizer = LsaSummarizer(stemmer)
+    summarizer.stop_words = get_stop_words("english")
+    
+    summary = summarizer(parser.document, sentences)
+    return "\n".join([str(sentence) for sentence in summary])
+
+# Usage example
+input_file = "transcript.txt"
+cleaned_file = "cleaned_transcript.txt"
+
+# 1. Clean duplicates
+cleaned_lines = clean_transcript(input_file, cleaned_file)
+
+# 2. Summarize content
+with open(cleaned_file, 'r') as f:
+    cleaned_text = f.read()
+
+summary = summarize_text(cleaned_text, sentences=3)
+print("Summary:")
+print(summary)
+
+# Save summary to file
+with open("summary.txt", "w") as f:
+    f.write(summary)
