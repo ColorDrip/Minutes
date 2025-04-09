@@ -1,0 +1,62 @@
+# Install required packages: pip install nltk sentence-transformers scikit-learn
+
+import re
+from nltk.tokenize import sent_tokenize
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+
+def clean_semantic_duplicates(text, similarity_threshold=0.85):
+    """Remove semantically similar sentences using SBERT embeddings"""
+    # Split into sentences
+    sentences = sent_tokenize(text)
+    if len(sentences) < 2:
+        return text
+
+    # Load pre-trained semantic model
+    model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+    embeddings = model.encode(sentences)
+
+    # Find duplicates using cosine similarity
+    keep_indices = [0]
+    for i in range(1, len(sentences)):
+        # Check against previous sentence
+        sim = cosine_similarity([embeddings[i]], [embeddings[i-1]])[0][0]
+        if sim < similarity_threshold and not is_substring_duplicate(sentences[i], sentences[i-1]):
+            keep_indices.append(i)
+
+    return ' '.join([sentences[i] for i in keep_indices])
+
+def is_substring_duplicate(current, previous):
+    """Check if one sentence is a partial duplicate of another"""
+    current_clean = re.sub(r'\W+', ' ', current).lower().strip()
+    prev_clean = re.sub(r'\W+', ' ', previous).lower().strip()
+    return current_clean in prev_clean or prev_clean in current_clean
+
+def summarize_with_context(text, num_sentences=3):
+    """Context-aware summarization using BERT"""
+    from transformers import pipeline
+    summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+    summary = summarizer(text, max_length=150, min_length=30, do_sample=False)
+    return summary[0]['summary_text']
+
+# Full Workflow
+def process_transcript(input_file):
+    with open(input_file, 'r') as f:
+        text = f.read()
+
+    # Step 1: Clean partial duplicates
+    text = clean_semantic_duplicates(text)
+
+    # Step 2: Summarize
+    summary = summarize_with_context(text)
+    
+    return text, summary
+
+# Usage
+cleaned_text, summary = process_transcript("transcript.txt")
+
+print("Cleaned Text:")
+print(cleaned_text)
+
+print("\nSummary:")
+print(summary)
