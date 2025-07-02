@@ -1,0 +1,188 @@
+import os
+import pandas as pd
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+import re
+import getpass
+from datetime import datetime
+
+class EmployeeFAQSystem:
+    def __init__(self, employee_id):
+        # Get current Windows username
+        self.username = getpass.getuser()
+        self.employee_id = employee_id
+        
+        # Create dynamic path: C:\Users\<username>\Employee_<employeeID>\
+        self.base_path = f"C:\\Users\\{self.username}\\Employee_{self.employee_id}\\"
+        
+        # Create directory if it doesn't exist
+        os.makedirs(self.base_path, exist_ok=True)
+        
+        # File paths
+        self.faq_file = os.path.join(self.base_path, "faq_knowledge.xlsx")
+        self.log_file = os.path.join(self.base_path, "conversation_log.xlsx")
+        
+        # Initialize files
+        self.initialize_files()
+        
+        # Load data
+        self.faqs = pd.read_excel(self.faq_file)
+        self.logs = pd.read_excel(self.log_file) if os.path.exists(self.log_file) else pd.DataFrame()
+        
+        # Prepare vectorizer
+        self.vectorizer = TfidfVectorizer()
+        self.question_vectors = self.vectorizer.fit_transform(
+            self.faqs['Question'].apply(self.clean_text)
+        )
+    
+    def initialize_files(self):
+        """Create template files if they don't exist"""
+        # FAQ knowledge base
+        if not os.path.exists(self.faq_file):
+            faq_template = pd.DataFrame({
+                'Question': [
+                    'How do I request time off?',
+                    'Where can I find company policies?',
+                    'How do I reset my network password?'
+                ],
+                'Answer': [
+                    'Submit a request through the HR portal at least 2 weeks in advance',
+                    'All policies are available on the company intranet under "Resources"',
+                    'Visit IT Portal > Account Management > Password Reset'
+                ],
+                'Category': ['HR', 'General', 'IT'],
+                'Last Used': [np.nan, np.nan, np.nan],
+                'Use Count': [0, 0, 0],
+                'Created By': [self.employee_id, self.employee_id, self.employee_id],
+                'Created Date': [datetime.now(), datetime.now(), datetime.now()]
+            })
+            faq_template.to_excel(self.faq_file, index=False)
+        
+        # Conversation log
+        if not os.path.exists(self.log_file):
+            log_template = pd.DataFrame(columns=[
+                'Timestamp', 'User Input', 'System Response', 
+                'Matched Question', 'Confidence'
+            ])
+            log_template.to_excel(self.log_file, index=False)
+    
+    def clean_text(self, text):
+        """Normalize text for processing"""
+        text = str(text).lower()
+        text = re.sub(r'[^\w\s]', '', text)
+        return text.strip()
+    
+    def find_best_match(self, query):
+        """Find best matching question in knowledge base"""
+        query = self.clean_text(query)
+        query_vec = self.vectorizer.transform([query])
+        
+        # Calculate cosine similarity
+        similarities = cosine_similarity(query_vec, self.question_vectors)
+        max_index = np.argmax(similarities)
+        max_similarity = similarities[0, max_index]
+        
+        if max_similarity > 0.4:  # Similarity threshold
+            return self.faqs.iloc[max_index], max_similarity
+        return None, max_similarity
+    
+    def update_faq_usage(self, index):
+        """Update usage statistics for a FAQ entry"""
+        self.faqs.at[index, 'Use Count'] += 1
+        self.faqs.at[index, 'Last Used'] = datetime.now()
+        self.faqs.to_excel(self.faq_file, index=False)
+    
+    def log_conversation(self, user_input, response, matched_question, confidence):
+        """Record conversation to Excel log"""
+        new_entry = pd.DataFrame([{
+            'Timestamp': datetime.now(),
+            'User Input': user_input,
+            'System Response': response,
+            'Matched Question': matched_question,
+            'Confidence': confidence
+        }])
+        
+        # Append to existing log
+        updated_log = pd.concat([self.logs, new_entry], ignore_index=True)
+        updated_log.to_excel(self.log_file, index=False)
+        self.logs = updated_log
+    
+    def add_new_faq(self):
+        """Add a new FAQ entry to the knowledge base"""
+        print("\n--- ADD NEW FAQ ---")
+        question = input("Enter the new question: ").strip()
+        answer = input("Enter the answer: ").strip()
+        category = input("Enter category (HR/IT/General): ").strip()
+        
+        new_faq = pd.DataFrame([{
+            'Question': question,
+            'Answer': answer,
+            'Category': category,
+            'Last Used': np.nan,
+            'Use Count': 0,
+            'Created By': self.employee_id,
+            'Created Date': datetime.now()
+        }])
+        
+        # Add to existing FAQs
+        updated_faqs = pd.concat([self.faqs, new_faq], ignore_index=True)
+        updated_faqs.to_excel(self.faq_file, index=False)
+        self.faqs = updated_faqs
+        print(f"\n✅ New FAQ added successfully at: {self.faq_file}")
+    
+    def run(self):
+        """Main interaction loop"""
+        print(f"\n📁 FAQ System for Employee {self.employee_id}")
+        print(f"📂 Storage Location: {self.base_path}")
+        print("Type 'add' to create new FAQ, 'exit' to quit\n")
+        
+        while True:
+            user_input = input("You: ").strip()
+            if not user_input:
+                continue
+                
+            # Special commands
+            if user_input.lower() == 'exit':
+                print("\nThank you for using the FAQ system!")
+                break
+                
+            if user_input.lower() == 'add':
+                self.add_new_faq()
+                continue
+                
+            # Process FAQ query
+            match, confidence = self.find_best_match(user_input)
+            
+            if match is not None:
+                # Update usage stats
+                self.update_faq_usage(match.name)
+                
+                # Format response
+                response = (
+                    f"🔍 We found a match (Confidence: {confidence:.2f}):\n"
+                    f"Q: {match['Question']}\n"
+                    f"A: {match['Answer']}\n"
+                    f"Category: {match['Category']} | Used: {match['Use Count']} times"
+                )
+                print(f"\n🤖 {response}")
+                
+                # Log conversation
+                self.log_conversation(
+                    user_input, 
+                    response, 
+                    match['Question'], 
+                    confidence
+                )
+            else:
+                response = "❌ No good match found. Type 'add' to create a new FAQ entry."
+                print(f"\n🤖 {response}")
+                self.log_conversation(user_input, response, None, confidence)
+
+
+if __name__ == "__main__":
+    # Get employee ID from user
+    employee_id = input("Enter your Employee ID: ").strip()
+    
+    # Initialize and run system
+    faq_system = EmployeeFAQSystem(employee_id)
+    faq_system.run()
