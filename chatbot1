@@ -1,0 +1,179 @@
+import pandas as pd
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import re
+import random
+from datetime import datetime
+import os
+
+class ExcelFAQSystem:
+    def __init__(self, faq_file="faq_knowledge.xlsx", log_file="conversation_log.xlsx"):
+        self.faq_file = faq_file
+        self.log_file = log_file
+        self.greetings = ["hi", "hello", "hey", "greetings", "howdy"]
+        self.farewells = ["bye", "goodbye", "exit", "quit", "see you"]
+        self.threshold = 0.35  # Similarity threshold
+        
+        # Initialize or load FAQ knowledge base
+        if not os.path.exists(self.faq_file):
+            self.create_faq_template()
+        self.faq_df = pd.read_excel(self.faq_file)
+        
+        # Initialize or load conversation log
+        if not os.path.exists(self.log_file):
+            self.create_log_template()
+        self.log_df = pd.read_excel(self.log_file)
+        
+        # Prepare vectorizer
+        self.vectorizer = TfidfVectorizer()
+        self.question_vectors = self.vectorizer.fit_transform(
+            self.faq_df['Question'].apply(self.preprocess)
+        )
+    
+    def create_faq_template(self):
+        """Create template Excel file if doesn't exist"""
+        template = pd.DataFrame({
+            'Question': [
+                'What is your return policy?',
+                'How do I reset my password?',
+                'Do you ship internationally?'
+            ],
+            'Answer': [
+                'We offer a 30-day return policy',
+                'Visit our password reset page',
+                'Yes, we ship to over 50 countries'
+            ],
+            'Last Used': [''] * 3,
+            'Use Count': [0] * 3
+        })
+        template.to_excel(self.faq_file, index=False)
+    
+    def create_log_template(self):
+        """Create conversation log template"""
+        log_template = pd.DataFrame(columns=[
+            'Timestamp', 'User Input', 'System Response', 'Matched Question', 'Confidence'
+        ])
+        log_template.to_excel(self.log_file, index=False)
+    
+    def preprocess(self, text):
+        """Clean and normalize text for matching"""
+        text = str(text).lower()
+        text = re.sub(r'[^\w\s]', '', text)
+        return text.strip()
+    
+    def find_best_match(self, query):
+        """Find best matching question in knowledge base"""
+        query = self.preprocess(query)
+        query_vec = self.vectorizer.transform([query])
+        
+        # Calculate cosine similarity
+        similarities = cosine_similarity(query_vec, self.question_vectors)
+        max_index = np.argmax(similarities)
+        max_similarity = similarities[0, max_index]
+        
+        if max_similarity > self.threshold:
+            return self.faq_df.iloc[max_index], max_similarity
+        return None, max_similarity
+    
+    def update_knowledge_base(self, matched_row):
+        """Update usage statistics in FAQ database"""
+        idx = matched_row.name
+        self.faq_df.at[idx, 'Use Count'] += 1
+        self.faq_df.at[idx, 'Last Used'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.faq_df.to_excel(self.faq_file, index=False)
+    
+    def log_conversation(self, user_input, response, matched_question, confidence):
+        """Record conversation to Excel log"""
+        new_entry = pd.DataFrame([{
+            'Timestamp': datetime.now(),
+            'User Input': user_input,
+            'System Response': response,
+            'Matched Question': matched_question,
+            'Confidence': confidence
+        }])
+        
+        # Append to existing log
+        updated_log = pd.concat([self.log_df, new_entry], ignore_index=True)
+        updated_log.to_excel(self.log_file, index=False)
+        self.log_df = updated_log
+    
+    def generate_response(self, user_input):
+        """Generate response to user query"""
+        clean_input = self.preprocess(user_input)
+        
+        # Handle greetings
+        if any(greet in clean_input for greet in self.greetings):
+            return random.choice([
+                "Hello! How can I assist you today?",
+                "Hi there! What can I help you with?",
+                "Greetings! Ask me anything."
+            ]), None, 1.0
+        
+        # Handle farewells
+        if any(farewell in clean_input for farewell in self.farewells):
+            return random.choice([
+                "Goodbye! Feel free to return if you have more questions.",
+                "See you later! Have a great day.",
+                "Bye! We're always here if you need help."
+            ]), None, 1.0
+        
+        # Handle FAQ matching
+        match, confidence = self.find_best_match(user_input)
+        if match is not None:
+            # Update usage stats
+            self.update_knowledge_base(match)
+            
+            # Add response variety
+            intro = random.choice([
+                "Based on your question:",
+                "Here's what I found:",
+                "I understand you're asking about:",
+                "Here's the information you requested:"
+            ])
+            response = f"{intro}\n\nQ: {match['Question']}\nA: {match['Answer']}"
+            return response, match['Question'], confidence
+        
+        # Fallback for unknown questions
+        fallbacks = [
+            "I'm not sure I understand. Could you rephrase your question?",
+            "That's an interesting question! I'll need to check with a human expert.",
+            "I don't have that information right now, but I can connect you to our support team.",
+            "Let me find that out for you. Could you provide more details?"
+        ]
+        return random.choice(fallbacks), None, confidence
+    
+    def run(self):
+        """Main interaction loop"""
+        print("🤖 Welcome to the Excel-Powered FAQ System!")
+        print(f"📊 Knowledge base: {len(self.faq_df)} questions loaded")
+        print("Type 'exit' to end the conversation\n")
+        
+        while True:
+            user_input = input("You: ").strip()
+            if not user_input:
+                continue
+                
+            # Generate response
+            response, matched_question, confidence = self.generate_response(user_input)
+            print("\n🤖", response)
+            
+            # Log conversation
+            self.log_conversation(user_input, response, matched_question, confidence)
+            
+            # Show related questions for low-confidence responses
+            if confidence < 0.5:
+                print("\n🤖 Maybe these could help:")
+                top_questions = self.faq_df.sort_values('Use Count', ascending=False).head(3)
+                for i, row in top_questions.iterrows():
+                    print(f"   • {row['Question']}")
+            
+            # Exit condition
+            if self.preprocess(user_input) in self.farewells:
+                print("\nThank you for using the FAQ system!")
+                break
+            print()
+
+if __name__ == "__main__":
+    faq_bot = ExcelFAQSystem()
+    faq_bot.run()
