@@ -5,39 +5,57 @@ import matplotlib.pyplot as plt
 # 1. Load your CSV file
 df = pd.read_csv("your_file.csv")  # Replace with your file name
 
-# 2. Convert Date to datetime and drop it for plotting
+# 2. Convert Date to datetime (if exists) and drop it for numeric analysis
 if 'Date' in df.columns:
     df['Date'] = pd.to_datetime(df['Date'])
     df_numeric = df.drop(columns=['Date'])
 else:
     df_numeric = df
 
-# 3. Identify Depreciation as target
+# 3. Ensure all columns are numeric (force convert errors to NaN)
+df_numeric = df_numeric.apply(pd.to_numeric, errors='coerce')
+
+# 4. Drop rows with NaN or inf values
+df_numeric = df_numeric.replace([np.inf, -np.inf], np.nan).dropna()
+
+# 5. Identify target and features
 target_col = 'Depreciation'
 features = [col for col in df_numeric.columns if col != target_col]
 
-# 4. Plot each variable vs Depreciation
+# 6. Plot each feature vs Depreciation
 num_features = len(features)
 fig, axes = plt.subplots(nrows=num_features, ncols=1, figsize=(8, 4*num_features))
 
+# Handle single subplot case
 if num_features == 1:
-    axes = [axes]  # Ensure iterable if only one subplot
+    axes = [axes]
 
-colors = plt.cm.tab10.colors  # distinct colors
+colors = plt.cm.tab10.colors  # Distinct colors
 
 for i, feature in enumerate(features):
     ax = axes[i]
-    
-    # Scatter plot
-    ax.scatter(df_numeric[feature], df_numeric[target_col], color=colors[i % 10], alpha=0.6, label=feature)
-    
-    # Add regression line (best-fit line)
     x = df_numeric[feature].values
     y = df_numeric[target_col].values
-    m, c = np.polyfit(x, y, 1)  # Linear fit
-    ax.plot(x, m*x + c, color='black', linewidth=2, label='Trendline')
-    
-    # Title and labels
+
+    # Scatter plot
+    ax.scatter(x, y, color=colors[i % 10], alpha=0.6, label=feature)
+
+    # Check variation and fit trendline if possible
+    if np.nanstd(x) == 0 or np.nanstd(y) == 0:
+        ax.text(0.5, 0.5, "No variation", transform=ax.transAxes, ha='center', fontsize=10)
+    else:
+        try:
+            # Fit linear regression (trendline)
+            m, c = np.polyfit(x, y, 1)
+            ax.plot(x, m*x + c, color='black', linewidth=2, label='Trendline')
+
+            # Show correlation coefficient
+            corr = np.corrcoef(x, y)[0, 1]
+            ax.text(0.05, 0.9, f"Corr: {corr:.2f}", transform=ax.transAxes, fontsize=10, color='red')
+        except Exception as e:
+            ax.text(0.5, 0.5, "Fit Error", transform=ax.transAxes, ha='center', fontsize=10)
+
+    # Title & Labels
     ax.set_title(f"{feature} vs {target_col}")
     ax.set_xlabel(feature, rotation=0)
     ax.set_ylabel(target_col, rotation=0)
