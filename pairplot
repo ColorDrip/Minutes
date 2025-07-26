@@ -1,13 +1,47 @@
-import seaborn as sns
+import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 
-# pairplot code
-plot = sns.pairplot(df_numeric, diag_kind="kde")
+# 1. Load your CSV file
+df = pd.read_csv("your_file.csv")  # Replace with your file name
 
-# Rotate axis labels to horizontal
-for ax in plot.axes.flatten():
-    ax.set_xlabel(ax.get_xlabel(), rotation=0)   # horizontal x-label
-    ax.set_ylabel(ax.get_ylabel(), rotation=0)   # horizontal y-label
+# 2. Convert Date to datetime and drop it for plotting
+if 'Date' in df.columns:
+    df['Date'] = pd.to_datetime(df['Date'])
+    df_numeric = df.drop(columns=['Date'])
+else:
+    df_numeric = df
 
-plt.suptitle("Scatter Plot Matrix of Variables", y=1.02)
+# 3. Identify Depreciation as target
+target_col = 'Depreciation'
+features = [col for col in df_numeric.columns if col != target_col]
+
+# 4. Plot each variable vs Depreciation
+num_features = len(features)
+fig, axes = plt.subplots(nrows=num_features, ncols=1, figsize=(8, 4*num_features))
+
+if num_features == 1:
+    axes = [axes]  # Ensure iterable if only one subplot
+
+colors = plt.cm.tab10.colors  # distinct colors
+
+for i, feature in enumerate(features):
+    ax = axes[i]
+    
+    # Scatter plot
+    ax.scatter(df_numeric[feature], df_numeric[target_col], color=colors[i % 10], alpha=0.6, label=feature)
+    
+    # Add regression line (best-fit line)
+    x = df_numeric[feature].values
+    y = df_numeric[target_col].values
+    m, c = np.polyfit(x, y, 1)  # Linear fit
+    ax.plot(x, m*x + c, color='black', linewidth=2, label='Trendline')
+    
+    # Title and labels
+    ax.set_title(f"{feature} vs {target_col}")
+    ax.set_xlabel(feature, rotation=0)
+    ax.set_ylabel(target_col, rotation=0)
+    ax.legend()
+
+plt.tight_layout()
 plt.show()
