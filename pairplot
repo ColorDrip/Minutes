@@ -1,65 +1,38 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from pandas.plotting import scatter_matrix
 
-# 1. Load your CSV file
-df = pd.read_csv("your_file.csv")  # Replace with your file name
+# 1. Load CSV
+df = pd.read_csv("your_file.csv")
 
-# 2. Convert Date to datetime (if exists) and drop it for numeric analysis
+# 2. Convert to numeric (drop Date column if present)
 if 'Date' in df.columns:
-    df['Date'] = pd.to_datetime(df['Date'])
-    df_numeric = df.drop(columns=['Date'])
-else:
-    df_numeric = df
+    df = df.drop(columns=['Date'])
 
-# 3. Ensure all columns are numeric (force convert errors to NaN)
-df_numeric = df_numeric.apply(pd.to_numeric, errors='coerce')
+df = df.apply(pd.to_numeric, errors='coerce')
+df = df.replace([np.inf, -np.inf], np.nan).dropna()
 
-# 4. Drop rows with NaN or inf values
-df_numeric = df_numeric.replace([np.inf, -np.inf], np.nan).dropna()
+# 3. Scatter matrix (pairwise plots)
+plt.figure(figsize=(12, 12))
+scatter_matrix(df, figsize=(12, 12), diagonal='kde', alpha=0.7)
 
-# 5. Identify target and features
-target_col = 'Depreciation'
-features = [col for col in df_numeric.columns if col != target_col]
-
-# 6. Plot each feature vs Depreciation
-num_features = len(features)
-fig, axes = plt.subplots(nrows=num_features, ncols=1, figsize=(8, 4*num_features))
-
-# Handle single subplot case
-if num_features == 1:
-    axes = [axes]
-
-colors = plt.cm.tab10.colors  # Distinct colors
-
-for i, feature in enumerate(features):
-    ax = axes[i]
-    x = df_numeric[feature].values
-    y = df_numeric[target_col].values
-
-    # Scatter plot
-    ax.scatter(x, y, color=colors[i % 10], alpha=0.6, label=feature)
-
-    # Check variation and fit trendline if possible
-    if np.nanstd(x) == 0 or np.nanstd(y) == 0:
-        ax.text(0.5, 0.5, "No variation", transform=ax.transAxes, ha='center', fontsize=10)
-    else:
-        try:
-            # Fit linear regression (trendline)
-            m, c = np.polyfit(x, y, 1)
-            ax.plot(x, m*x + c, color='black', linewidth=2, label='Trendline')
-
-            # Show correlation coefficient
-            corr = np.corrcoef(x, y)[0, 1]
-            ax.text(0.05, 0.9, f"Corr: {corr:.2f}", transform=ax.transAxes, fontsize=10, color='red')
-        except Exception as e:
-            ax.text(0.5, 0.5, "Fit Error", transform=ax.transAxes, ha='center', fontsize=10)
-
-    # Title & Labels
-    ax.set_title(f"{feature} vs {target_col}")
-    ax.set_xlabel(feature, rotation=0)
-    ax.set_ylabel(target_col, rotation=0)
-    ax.legend()
-
-plt.tight_layout()
+# Rotate labels horizontally
+plt.xticks(rotation=0)
+plt.yticks(rotation=0)
+plt.suptitle("Scatter Plot Matrix of All Variables", y=1.02)
 plt.show()
+
+# 4. Correlation heatmap
+corr_matrix = df.corr()
+
+plt.figure(figsize=(8, 6))
+plt.imshow(corr_matrix, cmap='coolwarm', interpolation='nearest')
+plt.colorbar(label="Correlation Coefficient")
+plt.xticks(range(len(corr_matrix)), corr_matrix.columns, rotation=45)
+plt.yticks(range(len(corr_matrix)), corr_matrix.columns)
+plt.title("Correlation Heatmap of All Variables")
+plt.show()
+
+print("Correlation Matrix:")
+print(corr_matrix)
