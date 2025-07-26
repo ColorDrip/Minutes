@@ -6,27 +6,31 @@ from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error
 # 1. Load and clean data
 df = pd.read_csv("your_file.csv")
 
-# Drop Date if present
+# Ensure Date column exists and is sorted
 if 'Date' in df.columns:
     df['Date'] = pd.to_datetime(df['Date'])
     df = df.sort_values('Date')  # Ensure chronological order
-    df = df.drop(columns=['Date'])
+else:
+    # Create dummy dates if not present
+    df['Date'] = pd.date_range(start='2020-01-01', periods=len(df), freq='M')
 
-# Convert all to numeric
-df = df.apply(pd.to_numeric, errors='coerce')
-df = df.replace([np.inf, -np.inf], np.nan).dropna()
+# Convert all to numeric except Date
+numeric_df = df.drop(columns=['Date']).apply(pd.to_numeric, errors='coerce')
+numeric_df = numeric_df.replace([np.inf, -np.inf], np.nan).dropna()
 
 # Target variable (Depreciation)
-y = df['Depreciation'].values
+y = numeric_df['Depreciation'].values
+dates = df['Date'].iloc[-len(y):]  # Align with cleaned data
 
 # Train-test split (last 20% as test)
 split_idx = int(len(y) * 0.8)
 y_train, y_test = y[:split_idx], y[split_idx:]
+dates_train, dates_test = dates[:split_idx], dates[split_idx:]
 
-# --- Model 1: Simple Average (predict using overall mean of train) ---
+# --- Model 1: Simple Average ---
 simple_avg_pred = np.full_like(y_test, np.mean(y_train), dtype=float)
 
-# --- Model 2: Moving Average (last 3 months average) ---
+# --- Model 2: Moving Average (last 3 months) ---
 window = 3
 moving_avg_pred = []
 for i in range(len(y_test)):
@@ -37,7 +41,7 @@ for i in range(len(y_test)):
     moving_avg_pred.append(avg)
 moving_avg_pred = np.array(moving_avg_pred)
 
-# --- Model 3: Exponential Smoothing (manual single) ---
+# --- Model 3: Exponential Smoothing ---
 alpha = 0.3  # smoothing factor
 ets_pred = []
 prev = y_train[0]
@@ -62,25 +66,28 @@ results.append(evaluate("Simple Average", y_test, simple_avg_pred))
 results.append(evaluate("Moving Average", y_test, moving_avg_pred))
 results.append(evaluate("Exponential Smoothing", y_test, ets_pred))
 
-# --- Results table ---
+# Results table
 results_df = pd.DataFrame(results, columns=["Model", "MAPE", "RMSE"])
 best_model = results_df.loc[results_df['MAPE'].idxmin()]
 print("\nComparison Table:\n", results_df)
 print(f"\nBest Model: {best_model['Model']} (MAPE={best_model['MAPE']:.2f}%, RMSE={best_model['RMSE']:.2f})")
 
-# --- Plot ---
-plt.figure(figsize=(10,6))
-plt.plot(y_test, label="Actual", marker='o')
-plt.plot(simple_avg_pred, label="Simple Average", linestyle='--')
-plt.plot(moving_avg_pred, label="Moving Average", linestyle='-.')
-plt.plot(ets_pred, label="Exponential Smoothing", linestyle=':')
+# --- Plot with Date on X-axis ---
+plt.figure(figsize=(12,6))
+plt.plot(dates_test, y_test, label="Actual", marker='o', color='black', linewidth=2)
+plt.plot(dates_test, simple_avg_pred, label="Simple Average", linestyle='--', color='blue')
+plt.plot(dates_test, moving_avg_pred, label="Moving Average", linestyle='-.', color='green')
+plt.plot(dates_test, ets_pred, label="Exponential Smoothing", linestyle=':', color='red')
+
+plt.title("Depreciation Forecast Comparison (Time Series Methods)")
+plt.xlabel("Date")
+plt.ylabel("Depreciation Value")
 plt.legend()
-plt.title("Time Series Models Comparison - Depreciation Forecast")
-plt.xlabel("Test Data Index")
-plt.ylabel("Depreciation")
 plt.grid(True)
+plt.xticks(rotation=45)
+plt.tight_layout()
 plt.show()
 
 # Save results
-results_df.to_excel("time_series_comparison.xlsx", index=False)
-print("Comparison results saved to time_series_comparison.xlsx")
+results_df.to_excel("time_series_comparison_with_dates.xlsx", index=False)
+print("Comparison results saved to time_series_comparison_with_dates.xlsx")
