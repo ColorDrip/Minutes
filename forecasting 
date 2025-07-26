@@ -1,0 +1,67 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# 1. Load your CSV file
+df = pd.read_csv("your_file.csv")  # Replace with your CSV filename
+# Ensure columns: "Date", "Depreciation"
+
+# 2. Prepare data
+df['Date'] = pd.to_datetime(df['Date'])
+df = df.sort_values('Date')
+df['Days'] = (df['Date'] - df['Date'].min()).dt.days
+
+# 3. Train-Test Split (80% train, 20% test)
+split_point = int(len(df) * 0.8)
+train = df.iloc[:split_point]
+test = df.iloc[split_point:]
+
+# 4. Train linear regression (polyfit)
+m, c = np.polyfit(train['Days'], train['Depreciation'], 1)
+
+# 5. Predict test values
+test_pred = m * test['Days'] + c
+
+# 6. Accuracy Metrics
+mape = np.mean(np.abs((test['Depreciation'] - test_pred) / test['Depreciation'])) * 100
+rmse = np.sqrt(np.mean((test['Depreciation'] - test_pred)**2))
+
+print(f"Model Accuracy:")
+print(f"MAPE: {mape:.2f}%")
+print(f"RMSE: {rmse:.2f}\n")
+
+# 7. Predict future 6 months
+last_date = df['Date'].max()
+future_dates = pd.date_range(start=last_date + pd.offsets.MonthBegin(1), periods=6, freq='MS')
+future_days = (future_dates - df['Date'].min()).days
+future_predictions = m * future_days + c
+
+# 8. Display future predictions
+forecast_df = pd.DataFrame({
+    "Date": future_dates,
+    "Predicted_Depreciation": np.round(future_predictions, 2)
+})
+print("Next 6-Month Predicted Depreciation:")
+print(forecast_df)
+
+# 9. Plot Actual + Test Predictions + Future Forecast
+plt.figure(figsize=(12,6))
+
+# Actual data
+plt.plot(df['Date'], df['Depreciation'], label='Actual Data', color='blue')
+
+# Trend line (training fit)
+plt.plot(df['Date'], m*df['Days']+c, color='orange', linestyle='--', label='Linear Trend')
+
+# Future forecast
+plt.plot(forecast_df['Date'], forecast_df['Predicted_Depreciation'], 'ro-', label='Future Forecast')
+
+# Plot test predictions (optional: visualize backtest)
+plt.scatter(test['Date'], test_pred, color='green', label='Predicted (Test)')
+
+plt.xlabel("Date")
+plt.ylabel("Depreciation Value")
+plt.title("Depreciation Forecast - Next 6 Months (Linear Regression)")
+plt.legend()
+plt.grid(True)
+plt.show()
