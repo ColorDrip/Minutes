@@ -1,14 +1,13 @@
-import pandas as pd
+import seaborn as sns
 import matplotlib.pyplot as plt
-from pandas.plotting import scatter_matrix
 
-# Load CSV
-df = pd.read_csv("your_file.csv")
+# pairplot code
+plot = sns.pairplot(df_numeric, diag_kind="kde")
 
-# Remove non-numeric columns (like Date)
-df_numeric = df.select_dtypes(include=['float64', 'int64'])
+# Rotate axis labels to horizontal
+for ax in plot.axes.flatten():
+    ax.set_xlabel(ax.get_xlabel(), rotation=0)   # horizontal x-label
+    ax.set_ylabel(ax.get_ylabel(), rotation=0)   # horizontal y-label
 
-# Scatter plot matrix
-scatter_matrix(df_numeric, figsize=(10, 10), diagonal='kde', alpha=0.7)
-plt.suptitle("Scatter Plot Matrix of Variables")
+plt.suptitle("Scatter Plot Matrix of Variables", y=1.02)
 plt.show()
