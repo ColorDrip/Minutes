@@ -1,0 +1,14 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+from pandas.plotting import scatter_matrix
+
+# Load CSV
+df = pd.read_csv("your_file.csv")
+
+# Remove non-numeric columns (like Date)
+df_numeric = df.select_dtypes(include=['float64', 'int64'])
+
+# Scatter plot matrix
+scatter_matrix(df_numeric, figsize=(10, 10), diagonal='kde', alpha=0.7)
+plt.suptitle("Scatter Plot Matrix of Variables")
+plt.show()
