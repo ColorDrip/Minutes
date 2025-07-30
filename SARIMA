@@ -1,0 +1,105 @@
+from pmdarima import auto_arima
+from pandas.tseries.offsets import MonthEnd
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, r2_score
+
+# ======= Load Data =======
+df = pd.read_excel("your_file.xlsx")
+df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)  # DD-MM-YYYY
+df = df.set_index('Date').resample('ME').mean()
+df = df.dropna(how='all', axis=1)
+
+# ======= Metric Function =======
+def calc_metrics(actual, predicted):
+    mae = mean_absolute_error(actual, predicted)
+    mape = mean_absolute_percentage_error(actual, predicted) * 100
+    rmse = np.sqrt(mean_squared_error(actual, predicted))
+    r2 = r2_score(actual, predicted)
+    accuracy = 100 - mape
+    return {'MAE': mae, 'MAPE': mape, 'RMSE': rmse, 'R2': r2, 'Accuracy%': accuracy}
+
+# ======= Forecast with SARIMA =======
+metrics_results = []
+future_forecasts = []
+historical_predictions = []
+future_months = 6
+
+for column in df.columns:
+    series = df[column].dropna()
+
+    if series.empty or len(series) < 2:
+        print(f"Skipping {column} – not enough data")
+        continue
+
+    dates = series.index
+    y = series.values
+
+    print(f"\n--- SARIMA Forecasting for {column} ---")
+
+    try:
+        # seasonal=True, m=12 (monthly seasonality)
+        sarima_model = auto_arima(series, seasonal=True, m=12,
+                                  stepwise=True, suppress_warnings=True)
+
+        # Historical predictions
+        sarima_pred_hist = pd.Series(sarima_model.predict_in_sample(), index=dates)
+
+        # Metrics
+        sarima_metrics = calc_metrics(series, sarima_pred_hist)
+
+        # Future forecast
+        future_index = pd.date_range(dates[-1] + MonthEnd(1), periods=future_months, freq='ME')
+        sarima_future = pd.Series(sarima_model.predict(n_periods=future_months), index=future_index)
+
+    except Exception as e:
+        print(f"Error with SARIMA for {column}: {e}")
+        sarima_pred_hist = pd.Series([np.nan]*len(series), index=dates)
+        sarima_future = pd.Series([np.nan]*future_months)
+        sarima_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # Save metrics
+    metrics_results.append({
+        'Column': column,
+        'Model': 'SARIMA',
+        **sarima_metrics
+    })
+
+    # Save historical predictions
+    hist_df = pd.DataFrame({
+        'Date': dates,
+        'Actual': series.values,
+        'SARIMA_Predicted': sarima_pred_hist.values,
+        'Column': column
+    })
+    historical_predictions.append(hist_df)
+
+    # Save future forecasts
+    future_df = pd.DataFrame({
+        'Date': future_index,
+        'SARIMA_Forecast': sarima_future.values,
+        'Column': column
+    })
+    future_forecasts.append(future_df)
+
+    # Plot
+    plt.figure(figsize=(10,5))
+    plt.plot(dates, series, label='Actual', color='black', linewidth=2)
+    plt.plot(dates, sarima_pred_hist, label='SARIMA Prediction', color='blue')
+    plt.title(f"{column} - Actual vs SARIMA (Historical)")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+# ======= Save to Excel =======
+metrics_df = pd.DataFrame(metrics_results)
+hist_df_final = pd.concat(historical_predictions)
+future_df_final = pd.concat(future_forecasts)
+
+with pd.ExcelWriter("sarima_forecast_results.xlsx") as writer:
+    metrics_df.to_excel(writer, sheet_name='Model Metrics', index=False)
+    hist_df_final.to_excel(writer, sheet_name='Historical Predictions', index=False)
+    future_df_final.to_excel(writer, sheet_name='Future Forecasts', index=False)
+
+print("SARIMA results saved to sarima_forecast_results.xlsx")
