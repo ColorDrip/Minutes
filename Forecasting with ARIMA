@@ -2,11 +2,12 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error, r2_score
+from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, r2_score
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from pmdarima import auto_arima
 from prophet import Prophet
 from sklearn.linear_model import LinearRegression
+from pandas.tseries.offsets import MonthEnd
 
 # -------- Load Data --------
 df = pd.read_excel("your_file.xlsx")
@@ -15,14 +16,19 @@ df.set_index('Date', inplace=True)
 
 # Function to calculate metrics
 def calc_metrics(actual, predicted):
+    mae = mean_absolute_error(actual, predicted)
     mape = mean_absolute_percentage_error(actual, predicted) * 100
     rmse = np.sqrt(mean_squared_error(actual, predicted))
     r2 = r2_score(actual, predicted)
-    accuracy = 100 - mape  # approximate accuracy
-    return {'MAPE': mape, 'RMSE': rmse, 'R2': r2, 'Accuracy%': accuracy}
+    accuracy = 100 - mape  # approx accuracy
+    return {'MAE': mae, 'MAPE': mape, 'RMSE': rmse, 'R2': r2, 'Accuracy%': accuracy}
 
-# Store results
+# Containers
 all_results = []
+future_forecasts = []
+
+# Forecast horizon
+future_months = 6
 
 for column in df.columns:
     series = df[column].dropna()
@@ -38,9 +44,13 @@ for column in df.columns:
         ets_model = ExponentialSmoothing(series, trend='add', seasonal=None).fit()
         ets_pred = ets_model.fittedvalues
         ets_metrics = calc_metrics(series, ets_pred)
+
+        # Future forecast
+        ets_future = ets_model.forecast(future_months)
     except:
         ets_pred = np.nan
-        ets_metrics = {'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+        ets_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+        ets_future = pd.Series([np.nan]*future_months)
 
     # ==========================
     # 2. ARIMA
@@ -49,9 +59,14 @@ for column in df.columns:
         arima_model = auto_arima(series, seasonal=False, stepwise=True, suppress_warnings=True)
         arima_pred = arima_model.predict_in_sample()
         arima_metrics = calc_metrics(series, arima_pred)
+
+        # Future forecast
+        arima_future = pd.Series(arima_model.predict(n_periods=future_months),
+                                 index=pd.date_range(dates[-1] + MonthEnd(1), periods=future_months, freq='M'))
     except:
         arima_pred = np.nan
-        arima_metrics = {'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+        arima_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+        arima_future = pd.Series([np.nan]*future_months)
 
     # ==========================
     # 3. Prophet
@@ -61,30 +76,44 @@ for column in df.columns:
         prophet_df.columns = ['ds', 'y']
         prophet_model = Prophet(daily_seasonality=False, yearly_seasonality=True)
         prophet_model.fit(prophet_df)
+
         forecast = prophet_model.predict(prophet_df)
         prophet_pred = forecast['yhat'].values
         prophet_metrics = calc_metrics(series, prophet_pred)
+
+        # Future forecast
+        future_dates = pd.date_range(dates[-1] + MonthEnd(1), periods=future_months, freq='M')
+        future_df = pd.DataFrame({'ds': future_dates})
+        prophet_future = prophet_model.predict(future_df)['yhat'].values
     except:
         prophet_pred = np.nan
-        prophet_metrics = {'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+        prophet_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+        prophet_future = [np.nan]*future_months
 
     # ==========================
     # 4. Linear Regression
     # ==========================
     try:
-        X = np.arange(len(series)).reshape(-1, 1)  # time as numeric
+        X = np.arange(len(series)).reshape(-1, 1)  # time index
         lr_model = LinearRegression().fit(X, y)
         lr_pred = lr_model.predict(X)
         lr_metrics = calc_metrics(series, lr_pred)
+
+        # Future forecast
+        X_future = np.arange(len(series), len(series)+future_months).reshape(-1, 1)
+        lr_future = lr_model.predict(X_future)
     except:
         lr_pred = np.nan
-        lr_metrics = {'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+        lr_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+        lr_future = [np.nan]*future_months
 
     # ==========================
     # Collect metrics
     # ==========================
     models = ['ETS', 'ARIMA', 'Prophet', 'Linear Regression']
+    preds = [ets_pred, arima_pred, prophet_pred, lr_pred]
     metrics_list = [ets_metrics, arima_metrics, prophet_metrics, lr_metrics]
+    futures_list = [ets_future, arima_future, prophet_future, lr_future]
 
     for model_name, metrics in zip(models, metrics_list):
         all_results.append({
@@ -93,33 +122,37 @@ for column in df.columns:
             **metrics
         })
 
+    # Combine future forecasts into dataframe
+    future_df = pd.DataFrame({
+        'Date': pd.date_range(dates[-1] + MonthEnd(1), periods=future_months, freq='M'),
+        'ETS': futures_list[0],
+        'ARIMA': futures_list[1],
+        'Prophet': futures_list[2],
+        'Linear Regression': futures_list[3]
+    })
+    future_df['Column'] = column
+    future_forecasts.append(future_df)
+
     # ==========================
     # Plot Comparison
     # ==========================
     plt.figure(figsize=(10,5))
     plt.plot(dates, series, label='Actual', color='black', linewidth=2)
-    if isinstance(ets_pred, np.ndarray) or isinstance(ets_pred, pd.Series):
-        plt.plot(dates, ets_pred, label='ETS')
-    if isinstance(arima_pred, np.ndarray):
-        plt.plot(dates, arima_pred, label='ARIMA')
-    if isinstance(prophet_pred, np.ndarray):
-        plt.plot(dates, prophet_pred, label='Prophet')
-    if isinstance(lr_pred, np.ndarray):
-        plt.plot(dates, lr_pred, label='Linear Regression')
-
-    plt.title(f"{column} - Actual vs Predictions")
+    for model_name, pred in zip(models, preds):
+        if isinstance(pred, np.ndarray) or isinstance(pred, pd.Series):
+            plt.plot(dates, pred, label=model_name)
+    plt.title(f"{column} - Actual vs Predictions (Historical)")
     plt.legend()
     plt.grid(True)
     plt.show()
 
-# Convert results to dataframe
-results_df = pd.DataFrame(all_results)
-print("\nModel Comparison Table:")
-print(results_df)
+# Combine results
+metrics_df = pd.DataFrame(all_results)
+future_df_final = pd.concat(future_forecasts)
 
-# Pretty table using seaborn
-plt.figure(figsize=(12,5))
-sns.barplot(data=results_df, x='Column', y='Accuracy%', hue='Model')
-plt.title("Model Accuracy Comparison")
-plt.xticks(rotation=45)
-plt.show()
+# Save to Excel
+with pd.ExcelWriter("forecast_results.xlsx") as writer:
+    metrics_df.to_excel(writer, sheet_name='Model Metrics', index=False)
+    future_df_final.to_excel(writer, sheet_name='Future Forecasts', index=False)
+
+print("Results saved to forecast_results.xlsx")
