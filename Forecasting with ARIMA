@@ -1,0 +1,125 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error, r2_score
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from pmdarima import auto_arima
+from prophet import Prophet
+from sklearn.linear_model import LinearRegression
+
+# -------- Load Data --------
+df = pd.read_excel("your_file.xlsx")
+df['Date'] = pd.to_datetime(df['Date'])
+df.set_index('Date', inplace=True)
+
+# Function to calculate metrics
+def calc_metrics(actual, predicted):
+    mape = mean_absolute_percentage_error(actual, predicted) * 100
+    rmse = np.sqrt(mean_squared_error(actual, predicted))
+    r2 = r2_score(actual, predicted)
+    accuracy = 100 - mape  # approximate accuracy
+    return {'MAPE': mape, 'RMSE': rmse, 'R2': r2, 'Accuracy%': accuracy}
+
+# Store results
+all_results = []
+
+for column in df.columns:
+    series = df[column].dropna()
+    dates = series.index
+    y = series.values
+
+    print(f"\n--- Forecasting {column} ---")
+
+    # ==========================
+    # 1. Holt-Winters (ETS)
+    # ==========================
+    try:
+        ets_model = ExponentialSmoothing(series, trend='add', seasonal=None).fit()
+        ets_pred = ets_model.fittedvalues
+        ets_metrics = calc_metrics(series, ets_pred)
+    except:
+        ets_pred = np.nan
+        ets_metrics = {'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # ==========================
+    # 2. ARIMA
+    # ==========================
+    try:
+        arima_model = auto_arima(series, seasonal=False, stepwise=True, suppress_warnings=True)
+        arima_pred = arima_model.predict_in_sample()
+        arima_metrics = calc_metrics(series, arima_pred)
+    except:
+        arima_pred = np.nan
+        arima_metrics = {'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # ==========================
+    # 3. Prophet
+    # ==========================
+    try:
+        prophet_df = series.reset_index()
+        prophet_df.columns = ['ds', 'y']
+        prophet_model = Prophet(daily_seasonality=False, yearly_seasonality=True)
+        prophet_model.fit(prophet_df)
+        forecast = prophet_model.predict(prophet_df)
+        prophet_pred = forecast['yhat'].values
+        prophet_metrics = calc_metrics(series, prophet_pred)
+    except:
+        prophet_pred = np.nan
+        prophet_metrics = {'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # ==========================
+    # 4. Linear Regression
+    # ==========================
+    try:
+        X = np.arange(len(series)).reshape(-1, 1)  # time as numeric
+        lr_model = LinearRegression().fit(X, y)
+        lr_pred = lr_model.predict(X)
+        lr_metrics = calc_metrics(series, lr_pred)
+    except:
+        lr_pred = np.nan
+        lr_metrics = {'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # ==========================
+    # Collect metrics
+    # ==========================
+    models = ['ETS', 'ARIMA', 'Prophet', 'Linear Regression']
+    metrics_list = [ets_metrics, arima_metrics, prophet_metrics, lr_metrics]
+
+    for model_name, metrics in zip(models, metrics_list):
+        all_results.append({
+            'Column': column,
+            'Model': model_name,
+            **metrics
+        })
+
+    # ==========================
+    # Plot Comparison
+    # ==========================
+    plt.figure(figsize=(10,5))
+    plt.plot(dates, series, label='Actual', color='black', linewidth=2)
+    if isinstance(ets_pred, np.ndarray) or isinstance(ets_pred, pd.Series):
+        plt.plot(dates, ets_pred, label='ETS')
+    if isinstance(arima_pred, np.ndarray):
+        plt.plot(dates, arima_pred, label='ARIMA')
+    if isinstance(prophet_pred, np.ndarray):
+        plt.plot(dates, prophet_pred, label='Prophet')
+    if isinstance(lr_pred, np.ndarray):
+        plt.plot(dates, lr_pred, label='Linear Regression')
+
+    plt.title(f"{column} - Actual vs Predictions")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+# Convert results to dataframe
+results_df = pd.DataFrame(all_results)
+print("\nModel Comparison Table:")
+print(results_df)
+
+# Pretty table using seaborn
+plt.figure(figsize=(12,5))
+sns.barplot(data=results_df, x='Column', y='Accuracy%', hue='Model')
+plt.title("Model Accuracy Comparison")
+plt.xticks(rotation=45)
+plt.show()
