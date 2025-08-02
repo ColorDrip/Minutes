@@ -1,0 +1,27 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Create date range (5 years of monthly data)
+dates = pd.date_range(start='2018-01-01', periods=60, freq='M')
+
+# Generate components
+np.random.seed(42)
+trend = np.linspace(10, 50, 60)                  # Linear upward trend
+seasonality = 10 * np.sin(2 * np.pi * dates.month / 12)  # Yearly seasonality
+cycle = 5 * np.sin(2 * np.pi * dates.month / 36)         # Longer cycle
+noise = np.random.normal(0, 2, 60)                       # Random noise
+
+# Combine components
+values = trend + seasonality + cycle + noise
+
+# Create dataframe
+data = pd.DataFrame({'Date': dates, 'Value': values})
+data.set_index('Date', inplace=True)
+
+# Plot synthetic data
+plt.figure(figsize=(12,5))
+sns.lineplot(x=data.index, y=data['Value'])
+plt.title("Synthetic Time Series (Trend + Seasonality + Cycle + Noise)")
+plt.show()
