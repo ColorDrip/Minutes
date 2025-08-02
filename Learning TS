@@ -42,3 +42,16 @@ plt.plot(data.index, data['Smoothed'], label='Smoothed', color='red')
 plt.title("Noise Reduction with Rolling Mean")
 plt.legend()
 plt.show()
+
+from statsmodels.tsa.stattools import adfuller
+
+def adf_test(series):
+    result = adfuller(series.dropna())
+    print("ADF Statistic:", result[0])
+    print("p-value:", result[1])
+    if result[1] <= 0.05:
+        print("Data is Stationary")
+    else:
+        print("Data is NOT Stationary")
+
+adf_test(data['Value'])
