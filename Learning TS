@@ -1,4 +1,8 @@
-noimport numpy as np
+Step-by-Step with Synthetic Data
+
+1. Generate Synthetic Data
+
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -26,12 +30,24 @@ sns.lineplot(x=data.index, y=data['Value'])
 plt.title("Synthetic Time Series (Trend + Seasonality + Cycle + Noise)")
 plt.show()
 
+
+---
+
+2. Decompose to See Components
+
 from statsmodels.tsa.seasonal import seasonal_decompose
 
 # Decompose (period=12 for monthly data)
 decomposition = seasonal_decompose(data['Value'], model='additive', period=12)
 decomposition.plot()
 plt.show()
+
+Observation: This separates trend, seasonal pattern, and residual noise.
+
+
+---
+
+3. Handle Noise (Smoothing)
 
 # Smooth using rolling average (3 months window)
 data['Smoothed'] = data['Value'].rolling(window=3).mean()
@@ -42,6 +58,13 @@ plt.plot(data.index, data['Smoothed'], label='Smoothed', color='red')
 plt.title("Noise Reduction with Rolling Mean")
 plt.legend()
 plt.show()
+
+
+---
+
+4. Check Stationarity (ADF Test)
+
+Stationary means no trend/seasonality — required for ARIMA.
 
 from statsmodels.tsa.stattools import adfuller
 
@@ -56,6 +79,13 @@ def adf_test(series):
 
 adf_test(data['Value'])
 
+
+---
+
+5. Remove Trend/Seasonality (Differencing)
+
+If non-stationary, apply differencing.
+
 # First difference
 data['Diff1'] = data['Value'].diff()
 
@@ -65,3 +95,54 @@ adf_test(data['Diff1'])
 data['Diff12'] = data['Value'].diff(12)
 
 adf_test(data['Diff12'])
+
+
+---
+
+6. Train-Test Split
+
+# 80-20 split
+train_size = int(len(data) * 0.8)
+train, test = data['Value'][:train_size], data['Value'][train_size:]
+
+
+---
+
+7. Fit ARIMA Model
+
+from statsmodels.tsa.arima.model import ARIMA
+
+# Fit ARIMA(p,d,q) model (start with basic params)
+model = ARIMA(train, order=(2,1,2))
+model_fit = model.fit()
+
+# Forecast
+forecast = model_fit.forecast(steps=len(test))
+
+
+---
+
+8. Plot Forecast vs Actual
+
+plt.figure(figsize=(12,5))
+plt.plot(train, label='Train')
+plt.plot(test, label='Test')
+plt.plot(test.index, forecast, label='Forecast', color='red')
+plt.title("Forecast vs Actual")
+plt.legend()
+plt.show()
+
+
+---
+
+9. Accuracy Metrics
+
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import numpy as np
+
+mae = mean_absolute_error(test, forecast)
+rmse = np.sqrt(mean_squared_error(test, forecast))
+
+print("MAE:", round(mae, 2))
+print("RMSE:", round(rmse, 2))
+
