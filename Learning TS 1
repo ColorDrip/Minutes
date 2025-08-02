@@ -1,0 +1,159 @@
+2. Load and Inspect Data
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Load your time series data
+# Example: CSV with columns [Date, Value]
+data = pd.read_csv('time_series_data.csv')
+
+# Convert 'Date' column to datetime format
+data['Date'] = pd.to_datetime(data['Date'])
+
+# Set 'Date' as the index for time series analysis
+data.set_index('Date', inplace=True)
+
+# Inspect data
+print(data.head())
+print(data.info())
+
+
+---
+
+3. Plot Raw Time Series
+
+# Plot the raw time series to visually inspect trend/seasonality/noise
+plt.figure(figsize=(10,5))
+sns.lineplot(data=data, x=data.index, y='Value')
+plt.title("Raw Time Series")
+plt.show()
+
+
+---
+
+4. Decompose the Time Series (Trend + Seasonality + Residual)
+
+This helps see underlying trend, seasonality, and noise.
+
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+# Decompose (assume data is monthly -> period=12)
+decomposition = seasonal_decompose(data['Value'], model='additive', period=12)
+
+# Plot trend, seasonality, and residual
+decomposition.plot()
+plt.show()
+
+
+---
+
+5. Handle Missing Data (if any)
+
+# Check for missing values
+print(data.isnull().sum())
+
+# Fill missing values (simple method: forward fill)
+data['Value'] = data['Value'].fillna(method='ffill')
+
+
+---
+
+6. Handle Noise (Smoothing)
+
+Use rolling average to smooth noise (helps identify trend).
+
+# Apply rolling mean (window=3 months)
+data['Smoothed'] = data['Value'].rolling(window=3).mean()
+
+# Plot smoothed data
+plt.figure(figsize=(10,5))
+plt.plot(data.index, data['Value'], label='Original', alpha=0.5)
+plt.plot(data.index, data['Smoothed'], label='Smoothed', color='red')
+plt.legend()
+plt.title("Noise Reduction using Rolling Average")
+plt.show()
+
+
+---
+
+7. Make Data Stationary (Remove Trend & Seasonality)
+
+Time series models like ARIMA need stationary data (constant mean/variance).
+
+Check stationarity using ADF test:
+
+from statsmodels.tsa.stattools import adfuller
+
+def adf_test(series):
+    result = adfuller(series.dropna())
+    print('ADF Statistic:', result[0])
+    print('p-value:', result[1])
+    print('Critical Values:', result[4])
+    if result[1] <= 0.05:
+        print("Data is Stationary")
+    else:
+        print("Data is NOT Stationary")
+
+adf_test(data['Value'])
+
+If NOT stationary → apply differencing:
+
+# Differencing to remove trend
+data['Diff'] = data['Value'].diff()
+
+adf_test(data['Diff'])
+
+
+---
+
+8. Train-Test Split
+
+# 80-20 split
+train_size = int(len(data) * 0.8)
+train, test = data['Value'][:train_size], data['Value'][train_size:]
+
+
+---
+
+9. Fit ARIMA Model
+
+ARIMA handles trend & seasonality after differencing.
+
+from statsmodels.tsa.arima.model import ARIMA
+
+# Fit ARIMA(p,d,q) model (start simple: ARIMA(1,1,1))
+model = ARIMA(train, order=(1,1,1))
+model_fit = model.fit()
+
+# Forecast
+forecast = model_fit.forecast(steps=len(test))
+
+
+---
+
+10. Plot Forecast vs Actual
+
+plt.figure(figsize=(10,5))
+plt.plot(train, label='Train')
+plt.plot(test, label='Test')
+plt.plot(test.index, forecast, label='Forecast', color='red')
+plt.legend()
+plt.title("Forecast vs Actual")
+plt.show()
+
+
+---
+
+11. Evaluate Accuracy
+
+Use Mean Absolute Error (MAE) or RMSE:
+
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import numpy as np
+
+mae = mean_absolute_error(test, forecast)
+rmse = np.sqrt(mean_squared_error(test, forecast))
+
+print("MAE:", mae)
+print("RMSE:", rmse)
