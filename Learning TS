@@ -25,3 +25,10 @@ plt.figure(figsize=(12,5))
 sns.lineplot(x=data.index, y=data['Value'])
 plt.title("Synthetic Time Series (Trend + Seasonality + Cycle + Noise)")
 plt.show()
+
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+# Decompose (period=12 for monthly data)
+decomposition = seasonal_decompose(data['Value'], model='additive', period=12)
+decomposition.plot()
+plt.show()
