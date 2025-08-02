@@ -55,3 +55,13 @@ def adf_test(series):
         print("Data is NOT Stationary")
 
 adf_test(data['Value'])
+
+# First difference
+data['Diff1'] = data['Value'].diff()
+
+adf_test(data['Diff1'])
+
+# Seasonal differencing (12 months)
+data['Diff12'] = data['Value'].diff(12)
+
+adf_test(data['Diff12'])
