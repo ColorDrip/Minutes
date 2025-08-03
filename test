@@ -1,30 +1,86 @@
-# Convert date with explicit format
-data['Date'] = pd.to_datetime(data['Date'], dayfirst=True)
-data.set_index('Date', inplace=True)
-
-# Set explicit frequency
-data = data.asfreq('M')
-
-# Handle missing values using new syntax
-data['Value'] = data['Value'].ffill()
-
-# Train-test split
-train_size = int(len(data) * 0.8)
-train, test = data['Value'][:train_size], data['Value'][train_size:]
-
-# Fit ARIMA
+# =======================================
+# 1. Import Libraries
+# =======================================
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.arima.model import ARIMA
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+
+# =======================================
+# 2. Load Your Data
+# =======================================
+file_path = "your_file.csv"  # replace with your file path
+date_col = "Date"            # replace with your date column
+value_col = "Value"          # replace with your value column
+
+data = pd.read_csv(file_path)
+
+# =======================================
+# 3. Date Handling & Frequency Fix
+# =======================================
+data[date_col] = pd.to_datetime(data[date_col], dayfirst=True)  # Set True if DMY format
+data.set_index(date_col, inplace=True)
+data = data.asfreq('M')  # Change 'M' to 'D' or 'Q' based on your data
+
+# Handle missing values
+data[value_col] = data[value_col].ffill()
+
+# =======================================
+# 4. Train-Test Split
+# =======================================
+train_size = int(len(data) * 0.8)
+train, test = data[value_col][:train_size], data[value_col][train_size:]
+
+# =======================================
+# 5. Baseline 1: Simple Average Forecast
+# =======================================
+simple_avg_forecast = pd.Series(train.mean(), index=test.index)
+
+# =======================================
+# 6. Baseline 2: Simple Moving Average Forecast
+# =======================================
+window = 3  # choose window size (3 = last 3 months)
+rolling_avg_forecast = train.rolling(window=window).mean().iloc[-1]
+rolling_avg_forecast = pd.Series(rolling_avg_forecast, index=test.index)
+
+# =======================================
+# 7. ARIMA Forecast
+# =======================================
 model = ARIMA(train, order=(2,1,2))
 model_fit = model.fit()
+arima_forecast = model_fit.forecast(steps=len(test))
+arima_forecast.index = test.index
 
-# Forecast with aligned index
-forecast = model_fit.forecast(steps=len(test))
-forecast.index = test.index
-
-# Plot
-plt.figure(figsize=(10,5))
+# =======================================
+# 8. Plot All Forecasts
+# =======================================
+plt.figure(figsize=(12, 6))
 plt.plot(train, label='Train')
 plt.plot(test, label='Test')
-plt.plot(forecast, label='Forecast', color='red')
+plt.plot(arima_forecast, label='ARIMA Forecast', color='red')
+plt.plot(simple_avg_forecast, label='Simple Average Forecast', linestyle='--')
+plt.plot(rolling_avg_forecast, label='Rolling Avg Forecast', linestyle=':')
+plt.title("Forecast Comparison")
 plt.legend()
 plt.show()
+
+# =======================================
+# 9. Accuracy Metrics Comparison
+# =======================================
+def evaluate_forecast(actual, predicted, label):
+    mae = mean_absolute_error(actual, predicted)
+    rmse = np.sqrt(mean_squared_error(actual, predicted))
+    print(f"{label} -> MAE: {mae:.2f}, RMSE: {rmse:.2f}")
+
+print("\n--- Accuracy Comparison ---")
+evaluate_forecast(test, simple_avg_forecast, "Simple Average")
+evaluate_forecast(test, rolling_avg_forecast, "Rolling Average")
+evaluate_forecast(test, arima_forecast, "ARIMA")
+
+# Optional: Error percentage for ARIMA
+error_percent = (np.sqrt(mean_squared_error(test, arima_forecast)) / test.mean()) * 100
+print(f"ARIMA Error %: {error_percent:.2f}%")
