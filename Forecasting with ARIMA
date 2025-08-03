@@ -171,3 +171,43 @@ with pd.ExcelWriter("forecast_results.xlsx") as writer:
     future_df_final.to_excel(writer, sheet_name='Future Forecasts', index=False)
 
 print("Results saved to forecast_results.xlsx")
+
+# =======================================
+# Combine All Outputs into One Table
+# =======================================
+
+# 1. Metrics Data
+metrics_df = pd.DataFrame(metrics_results)
+metrics_df['Type'] = 'Metric'  # Label for Qlik Sense
+
+# 2. Historical Predictions
+hist_df_final = pd.concat(historical_predictions)
+
+# Melt historical predictions to long format: one row per model prediction
+hist_melt = hist_df_final.melt(
+    id_vars=['Date', 'Actual', 'Column'],
+    var_name='Model',
+    value_name='Predicted'
+)
+hist_melt = hist_melt[hist_melt['Model'] != 'Actual']  # remove redundant "Actual"
+hist_melt['Type'] = 'Historical'
+
+# 3. Future Forecasts
+future_df_final = pd.concat(future_forecasts)
+
+# Melt future forecasts to long format
+future_melt = future_df_final.melt(
+    id_vars=['Date', 'Column'],
+    var_name='Model',
+    value_name='Predicted'
+)
+future_melt['Type'] = 'Forecast'
+future_melt['Actual'] = np.nan  # No actuals for future
+
+# 4. Combine All
+combined_df = pd.concat([metrics_df, hist_melt, future_melt], ignore_index=True)
+
+# 5. Save Single File (CSV for Qlik Sense)
+combined_df.to_csv("forecast_all_in_one.csv", index=False)
+
+print("Unified forecast data saved to forecast_all_in_one.csv for Qlik Sense")
