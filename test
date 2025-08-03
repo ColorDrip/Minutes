@@ -1,22 +1,14 @@
-# =======================================
-# 1. Import Libraries
-# =======================================
 import pandas as pd
 import matplotlib.pyplot as plt
-from statsmodels.tsa.seasonal import seasonal_decompose
-from pmdarima import auto_arima
 
-# =======================================
-# 2. Load Your Data
-# =======================================
-file_path = "your_file.csv"  # <-- replace with your file
-date_col = "Date"            # <-- replace with your date column name
-cost_col = "Cost"            # <-- replace with your cost column name
+# Load data
+file_path = "your_file.csv"   # replace with your file
+date_col = "Date"             # replace with your date column
+value_col = "Cost"            # replace with your value column
 
-# Load file
 data = pd.read_csv(file_path)
 
-# Parse dates (set dayfirst=True if your dates are DMY)
+# Convert Date column to datetime
 data[date_col] = pd.to_datetime(data[date_col], dayfirst=True)
 
 # Set Date as index
@@ -25,59 +17,91 @@ data.set_index(date_col, inplace=True)
 # Ensure monthly frequency
 data = data.asfreq('M')
 
-# =======================================
-# 3. Handle Missing Months & Values
-# =======================================
-# Create full monthly index from first to last date
+# Reindex to fill missing months (full range)
 full_index = pd.date_range(start=data.index.min(), end=data.index.max(), freq='M')
-
-# Reindex and forward fill missing values
 data = data.reindex(full_index)
-data[cost_col] = data[cost_col].ffill()
 
-# =======================================
-# 4. Decompose to See Trend & Seasonality
-# =======================================
-decomposition = seasonal_decompose(data[cost_col], model='additive', period=12)
+# Fill missing values (forward fill then backward fill)
+data[value_col] = data[value_col].ffill().bfill()
+
+plt.figure(figsize=(12, 6))
+plt.plot(data[value_col], label='Monthly Cost')
+plt.title("Monthly Cost Over Time")
+plt.xlabel("Date")
+plt.ylabel("Cost")
+plt.legend()
+plt.show()
+
+
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+decomposition = seasonal_decompose(data[value_col], model='additive', period=12)
 decomposition.plot()
 plt.show()
 
-# =======================================
-# 5. Auto ARIMA Model (Automatically Selects Best Parameters)
-# =======================================
-auto_model = auto_arima(
-    data[cost_col],
-    seasonal=True,
-    m=12,              # monthly seasonality
-    trace=False,
-    error_action='ignore',
-    suppress_warnings=True,
-    stepwise=True
-)
 
-print("Best ARIMA Order:", auto_model.order)
-print("Best Seasonal Order:", auto_model.seasonal_order)
 
-# =======================================
-# 6. Forecast Next 5 Years (60 Months)
-# =======================================
-forecast_steps = 60  # 5 years monthly
+from statsmodels.tsa.stattools import adfuller
 
-# Get forecast values
-forecast = auto_model.predict(n_periods=forecast_steps)
+def adf_test(series):
+    result = adfuller(series.dropna())
+    print("ADF Statistic:", result[0])
+    print("p-value:", result[1])
+    if result[1] <= 0.05:
+        print("Data is Stationary")
+    else:
+        print("Data is NOT Stationary")
 
-# Create future date index
-future_dates = pd.date_range(start=data.index[-1] + pd.offsets.MonthBegin(1), periods=forecast_steps, freq='M')
+adf_test(data[value_col])
 
-# Create forecast series
-forecast_series = pd.Series(forecast, index=future_dates)
 
-# =======================================
-# 7. Plot Historical + Forecast
-# =======================================
-plt.figure(figsize=(12, 6))
-plt.plot(data[cost_col], label='Historical Data')
-plt.plot(forecast_series, label='Forecast (Next 5 Years)', color='red')
-plt.title("Monthly Cost Forecast (Auto ARIMA)")
+train_size = int(len(data) * 0.8)
+train = data[value_col][:train_size]
+test = data[value_col][train_size:]
+
+
+
+import numpy as np
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+
+# Simple Average
+simple_avg_forecast = pd.Series(train.mean(), index=test.index)
+
+# Running Average (last 3 months)
+window = 3
+rolling_avg_forecast = pd.Series(train.rolling(window).mean().iloc[-1], index=test.index)
+
+# Evaluate
+def evaluate(actual, predicted, name):
+    mae = mean_absolute_error(actual, predicted)
+    rmse = np.sqrt(mean_squared_error(actual, predicted))
+    print(f"{name} -> MAE: {mae:.2f}, RMSE: {rmse:.2f}")
+
+evaluate(test, simple_avg_forecast, "Simple Average")
+evaluate(test, rolling_avg_forecast, "Running Average")
+
+
+from pmdarima import auto_arima
+
+# Fit Auto ARIMA
+arima_model = auto_arima(train, seasonal=True, m=12, trace=False, suppress_warnings=True)
+print("Best ARIMA Model:", arima_model.order, arima_model.seasonal_order)
+
+# Forecast
+arima_forecast = pd.Series(arima_model.predict(n_periods=len(test)), index=test.index)
+
+# Evaluate
+evaluate(test, arima_forecast, "ARIMA")
+
+
+future_forecast = arima_model.predict(n_periods=60)
+future_dates = pd.date_range(start=data.index[-1] + pd.offsets.MonthBegin(1), periods=60, freq='M')
+future_series = pd.Series(future_forecast, index=future_dates)
+
+# Plot historical + forecast
+plt.figure(figsize=(14, 6))
+plt.plot(data[value_col], label='Historical Data')
+plt.plot(future_series, label='5-Year Forecast', color='red')
+plt.title("Forecast for Next 5 Years")
 plt.legend()
 plt.show()
