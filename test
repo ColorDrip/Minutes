@@ -1,107 +1,241 @@
 import pandas as pd
-import matplotlib.pyplot as plt
-
-# Load data
-file_path = "your_file.csv"   # replace with your file
-date_col = "Date"             # replace with your date column
-value_col = "Cost"            # replace with your value column
-
-data = pd.read_csv(file_path)
-
-# Convert Date column to datetime
-data[date_col] = pd.to_datetime(data[date_col], dayfirst=True)
-
-# Set Date as index
-data.set_index(date_col, inplace=True)
-
-# Ensure monthly frequency
-data = data.asfreq('M')
-
-# Reindex to fill missing months (full range)
-full_index = pd.date_range(start=data.index.min(), end=data.index.max(), freq='M')
-data = data.reindex(full_index)
-
-# Fill missing values (forward fill then backward fill)
-data[value_col] = data[value_col].ffill().bfill()
-
-plt.figure(figsize=(12, 6))
-plt.plot(data[value_col], label='Monthly Cost')
-plt.title("Monthly Cost Over Time")
-plt.xlabel("Date")
-plt.ylabel("Cost")
-plt.legend()
-plt.show()
-
-
-from statsmodels.tsa.seasonal import seasonal_decompose
-
-decomposition = seasonal_decompose(data[value_col], model='additive', period=12)
-decomposition.plot()
-plt.show()
-
-
-
-from statsmodels.tsa.stattools import adfuller
-
-def adf_test(series):
-    result = adfuller(series.dropna())
-    print("ADF Statistic:", result[0])
-    print("p-value:", result[1])
-    if result[1] <= 0.05:
-        print("Data is Stationary")
-    else:
-        print("Data is NOT Stationary")
-
-adf_test(data[value_col])
-
-
-train_size = int(len(data) * 0.8)
-train = data[value_col][:train_size]
-test = data[value_col][train_size:]
-
-
-
 import numpy as np
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-
-# Simple Average
-simple_avg_forecast = pd.Series(train.mean(), index=test.index)
-
-# Running Average (last 3 months)
-window = 3
-rolling_avg_forecast = pd.Series(train.rolling(window).mean().iloc[-1], index=test.index)
-
-# Evaluate
-def evaluate(actual, predicted, name):
-    mae = mean_absolute_error(actual, predicted)
-    rmse = np.sqrt(mean_squared_error(actual, predicted))
-    print(f"{name} -> MAE: {mae:.2f}, RMSE: {rmse:.2f}")
-
-evaluate(test, simple_avg_forecast, "Simple Average")
-evaluate(test, rolling_avg_forecast, "Running Average")
-
-
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, r2_score
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from pmdarima import auto_arima
+from prophet import Prophet
+from sklearn.linear_model import LinearRegression
+from pandas.tseries.offsets import MonthEnd
+import warnings
 
-# Fit Auto ARIMA
-arima_model = auto_arima(train, seasonal=True, m=12, trace=False, suppress_warnings=True)
-print("Best ARIMA Model:", arima_model.order, arima_model.seasonal_order)
+warnings.filterwarnings("ignore", message=".*Plotly.*")
 
-# Forecast
-arima_forecast = pd.Series(arima_model.predict(n_periods=len(test)), index=test.index)
+# =======================================
+# 1. Load & Preprocess Data
+# =======================================
 
-# Evaluate
-evaluate(test, arima_forecast, "ARIMA")
+# Read Excel data
+df = pd.read_excel("your_file.xlsx")
 
+# Convert Date column to datetime (handles DD-MM-YYYY)
+df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)
 
-future_forecast = arima_model.predict(n_periods=60)
-future_dates = pd.date_range(start=data.index[-1] + pd.offsets.MonthBegin(1), periods=60, freq='M')
-future_series = pd.Series(future_forecast, index=future_dates)
+# Set Date as index and resample to month-end (ME) for consistent monthly frequency
+df = df.set_index('Date').resample('ME').mean()
 
-# Plot historical + forecast
-plt.figure(figsize=(14, 6))
-plt.plot(data[value_col], label='Historical Data')
-plt.plot(future_series, label='5-Year Forecast', color='red')
-plt.title("Forecast for Next 5 Years")
-plt.legend()
-plt.show()
+# Drop fully empty columns (if any exist)
+df = df.dropna(how='all', axis=1)
+
+# =======================================
+# 2. Define Metric Calculation Function
+# =======================================
+
+def calc_metrics(actual, predicted):
+    """
+    Calculate evaluation metrics between actual and predicted values:
+    MAE, MAPE, RMSE, R2 Score, and Accuracy %
+    """
+    mae = mean_absolute_error(actual, predicted)
+    mape = mean_absolute_percentage_error(actual, predicted) * 100
+    rmse = np.sqrt(mean_squared_error(actual, predicted))
+    r2 = r2_score(actual, predicted)
+    accuracy = 100 - mape  # Simple accuracy measure
+    return {'MAE': mae, 'MAPE': mape, 'RMSE': rmse, 'R2': r2, 'Accuracy%': accuracy}
+
+# =======================================
+# 3. Storage for Results
+# =======================================
+
+metrics_results = []         # For metrics table
+historical_predictions = []  # For historical fit data
+future_forecasts = []        # For future forecast data
+
+future_months = 6            # Forecast horizon (next 6 months)
+
+# =======================================
+# 4. Loop Through Each Numeric Column
+# =======================================
+
+for column in df.columns:
+    series = df[column].dropna()  # Drop missing values for this series
+
+    # Skip if insufficient data (need at least 2 points to forecast)
+    if series.empty or len(series) < 2:
+        print(f"Skipping {column} – not enough data")
+        continue
+
+    dates = series.index
+    y = series.values
+
+    print(f"\n--- Processing {column} ---")
+
+    # =======================================
+    # Baseline Models: Simple & Running Average
+    # =======================================
+
+    # Simple Average (constant forecast = mean of training data)
+    simple_avg_pred = pd.Series(series.mean(), index=dates)
+    simple_avg_future = pd.Series(series.mean(),
+                                  index=pd.date_range(dates[-1] + MonthEnd(1), periods=future_months, freq='ME'))
+    simple_avg_metrics = calc_metrics(series, simple_avg_pred)
+
+    # Running Average (last 3 months)
+    window = 3
+    if len(series) >= window:
+        run_avg_value = series[-window:].mean()
+    else:
+        run_avg_value = series.mean()
+    run_avg_pred = pd.Series(run_avg_value, index=dates)
+    run_avg_future = pd.Series(run_avg_value,
+                               index=pd.date_range(dates[-1] + MonthEnd(1), periods=future_months, freq='ME'))
+    run_avg_metrics = calc_metrics(series, run_avg_pred)
+
+    # =======================================
+    # 1. Holt-Winters (ETS)
+    # =======================================
+    try:
+        ets_model = ExponentialSmoothing(series, trend='add', seasonal='add', seasonal_periods=12).fit()
+        ets_pred_hist = ets_model.fittedvalues
+        ets_future = ets_model.forecast(future_months)
+        ets_metrics = calc_metrics(series, ets_pred_hist)
+    except:
+        ets_pred_hist = pd.Series([np.nan]*len(series), index=dates)
+        ets_future = pd.Series([np.nan]*future_months)
+        ets_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # =======================================
+    # 2. ARIMA (Auto-parameter selection)
+    # =======================================
+    try:
+        arima_model = auto_arima(series, seasonal=True, m=12, stepwise=True, suppress_warnings=True)
+        arima_pred_hist = pd.Series(arima_model.predict_in_sample(), index=dates)
+        arima_future_index = pd.date_range(dates[-1] + MonthEnd(1), periods=future_months, freq='ME')
+        arima_future = pd.Series(arima_model.predict(n_periods=future_months), index=arima_future_index)
+        arima_metrics = calc_metrics(series, arima_pred_hist)
+    except:
+        arima_pred_hist = pd.Series([np.nan]*len(series), index=dates)
+        arima_future = pd.Series([np.nan]*future_months)
+        arima_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # =======================================
+    # 3. Prophet
+    # =======================================
+    try:
+        prophet_df = series.reset_index()
+        prophet_df.columns = ['ds', 'y']  # Prophet expects columns 'ds' and 'y'
+
+        # Initialize Prophet model (yearly seasonality)
+        prophet_model = Prophet(daily_seasonality=False, yearly_seasonality=True)
+        prophet_model.fit(prophet_df)
+
+        # Historical prediction
+        forecast_hist = prophet_model.predict(prophet_df)
+        prophet_pred_hist = pd.Series(forecast_hist['yhat'].values, index=dates)
+
+        # Future forecast
+        future_dates = pd.date_range(dates[-1] + MonthEnd(1), periods=future_months, freq='ME')
+        future_df = pd.DataFrame({'ds': future_dates})
+        prophet_future = pd.Series(prophet_model.predict(future_df)['yhat'].values, index=future_dates)
+
+        prophet_metrics = calc_metrics(series, prophet_pred_hist)
+    except:
+        prophet_pred_hist = pd.Series([np.nan]*len(series), index=dates)
+        prophet_future = pd.Series([np.nan]*future_months)
+        prophet_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # =======================================
+    # 4. Linear Regression (Trend Only)
+    # =======================================
+    try:
+        X = np.arange(len(series)).reshape(-1, 1)  # Time index as feature
+        lr_model = LinearRegression().fit(X, y)
+
+        # Historical prediction
+        lr_pred_hist = pd.Series(lr_model.predict(X), index=dates)
+
+        # Future forecast
+        X_future = np.arange(len(series), len(series)+future_months).reshape(-1, 1)
+        lr_future = pd.Series(lr_model.predict(X_future),
+                              index=pd.date_range(dates[-1] + MonthEnd(1), periods=future_months, freq='ME'))
+
+        lr_metrics = calc_metrics(series, lr_pred_hist)
+    except:
+        lr_pred_hist = pd.Series([np.nan]*len(series), index=dates)
+        lr_future = pd.Series([np.nan]*future_months)
+        lr_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # =======================================
+    # Save Metrics for All Models
+    # =======================================
+    models = ['Simple Average', 'Running Average', 'ETS', 'ARIMA', 'Prophet', 'Linear Regression']
+    metrics_list = [simple_avg_metrics, run_avg_metrics, ets_metrics, arima_metrics, prophet_metrics, lr_metrics]
+
+    for model_name, metrics in zip(models, metrics_list):
+        metrics_results.append({
+            'Column': column,
+            'Model': model_name,
+            **metrics
+        })
+
+    # =======================================
+    # Save Historical Predictions
+    # =======================================
+    hist_df = pd.DataFrame({
+        'Date': dates,
+        'Actual': series.values,
+        'Simple Average': simple_avg_pred.values,
+        'Running Average': run_avg_pred.values,
+        'ETS': ets_pred_hist.values,
+        'ARIMA': arima_pred_hist.values,
+        'Prophet': prophet_pred_hist.values,
+        'Linear Regression': lr_pred_hist.values,
+        'Column': column
+    })
+    historical_predictions.append(hist_df)
+
+    # =======================================
+    # Save Future Forecasts
+    # =======================================
+    future_df = pd.DataFrame({
+        'Date': pd.date_range(dates[-1] + MonthEnd(1), periods=future_months, freq='ME'),
+        'Simple Average': simple_avg_future.values,
+        'Running Average': run_avg_future.values,
+        'ETS': ets_future.values,
+        'ARIMA': arima_future.values,
+        'Prophet': prophet_future.values,
+        'Linear Regression': lr_future.values,
+        'Column': column
+    })
+    future_forecasts.append(future_df)
+
+    # =======================================
+    # Plot Historical Predictions
+    # =======================================
+    plt.figure(figsize=(10,5))
+    plt.plot(dates, series, label='Actual', color='black', linewidth=2)
+    plt.plot(dates, simple_avg_pred, label='Simple Avg', linestyle='--')
+    plt.plot(dates, run_avg_pred, label='Running Avg', linestyle=':')
+    plt.plot(dates, ets_pred_hist, label='ETS')
+    plt.plot(dates, arima_pred_hist, label='ARIMA')
+    plt.plot(dates, prophet_pred_hist, label='Prophet')
+    plt.plot(dates, lr_pred_hist, label='Linear Regression')
+    plt.title(f"{column} - Actual vs Predictions (Historical)")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+# =======================================
+# Combine Results & Save to Excel
+# =======================================
+metrics_df = pd.DataFrame(metrics_results)
+hist_df_final = pd.concat(historical_predictions)
+future_df_final = pd.concat(future_forecasts)
+
+with pd.ExcelWriter("forecast_results.xlsx") as writer:
+    metrics_df.to_excel(writer, sheet_name='Model Metrics', index=False)
+    hist_df_final.to_excel(writer, sheet_name='Historical Predictions', index=False)
+    future_df_final.to_excel(writer, sheet_name='Future Forecasts', index=False)
+
+print("Results saved to forecast_results.xlsx")
