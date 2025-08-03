@@ -1,0 +1,30 @@
+# Convert date with explicit format
+data['Date'] = pd.to_datetime(data['Date'], dayfirst=True)
+data.set_index('Date', inplace=True)
+
+# Set explicit frequency
+data = data.asfreq('M')
+
+# Handle missing values using new syntax
+data['Value'] = data['Value'].ffill()
+
+# Train-test split
+train_size = int(len(data) * 0.8)
+train, test = data['Value'][:train_size], data['Value'][train_size:]
+
+# Fit ARIMA
+from statsmodels.tsa.arima.model import ARIMA
+model = ARIMA(train, order=(2,1,2))
+model_fit = model.fit()
+
+# Forecast with aligned index
+forecast = model_fit.forecast(steps=len(test))
+forecast.index = test.index
+
+# Plot
+plt.figure(figsize=(10,5))
+plt.plot(train, label='Train')
+plt.plot(test, label='Test')
+plt.plot(forecast, label='Forecast', color='red')
+plt.legend()
+plt.show()
