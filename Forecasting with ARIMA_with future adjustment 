@@ -1,0 +1,260 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, r2_score
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from pmdarima import auto_arima
+from prophet import Prophet
+from sklearn.linear_model import LinearRegression
+import warnings
+
+warnings.filterwarnings("ignore", message=".*Plotly.*")
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+# =======================================
+# 1. Configurations
+# =======================================
+file_path = "your_file.xlsx"      # Input file
+future_months = 60                # Forecast horizon (5 years)
+
+# Weight for blending manual future inputs with forecast
+manual_weight = 0.3   # 0.3 = 30% manual influence, 70% model forecast
+
+# =======================================
+# 2. Helper Functions
+# =======================================
+
+# Metrics calculation
+def calc_metrics(actual, predicted):
+    mae = mean_absolute_error(actual, predicted)
+    mape = mean_absolute_percentage_error(actual, predicted) * 100
+    rmse = np.sqrt(mean_squared_error(actual, predicted))
+    r2 = r2_score(actual, predicted)
+    accuracy = 100 - mape
+    return {'MAE': mae, 'MAPE': mape, 'RMSE': rmse, 'R2': r2, 'Accuracy%': accuracy}
+
+# Blend forecast with manual future inputs
+def blend_forecast(forecast, manual, weight_manual=0.3):
+    blended = forecast.copy()
+    for date, manual_value in manual.items():
+        if pd.notna(manual_value):  # Only adjust if manual input exists
+            blended.loc[date] = forecast.loc[date]*(1-weight_manual) + manual_value*weight_manual
+    return blended
+
+# =======================================
+# 3. Load & Preprocess Data
+# =======================================
+
+df = pd.read_excel(file_path)
+df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)  # Parse DD-MM-YYYY
+df = df.set_index('Date').resample('M').mean()          # Monthly frequency
+df = df.asfreq('M')                                     # Ensure full monthly timeline
+df = df.dropna(how='all', axis=1)                       # Drop empty columns
+
+# =======================================
+# 4. Storage
+# =======================================
+metrics_results = []
+historical_predictions = []
+future_forecasts = []
+
+# =======================================
+# 5. Process Each Time Series Column
+# =======================================
+for column in df.columns:
+    series = df[column]
+
+    # Separate historical vs manual future
+    historical_series = series.loc[series.index <= pd.Timestamp.today()].dropna()
+    manual_future_series = series.loc[series.index > pd.Timestamp.today()]
+
+    if historical_series.empty or len(historical_series) < 2:
+        print(f"Skipping {column} – not enough historical data")
+        continue
+
+    dates = historical_series.index
+    y = historical_series.values
+
+    print(f"\n--- Processing {column} ---")
+
+    # Future index for forecast horizon
+    future_index = pd.date_range(dates[-1] + pd.DateOffset(months=1),
+                                 periods=future_months,
+                                 freq='M')
+
+    # ============================
+    # 1. Simple Average
+    # ============================
+    simple_avg_pred = pd.Series(historical_series.mean(), index=dates)
+    simple_avg_future = pd.Series(historical_series.mean(), index=future_index)
+    simple_avg_future = blend_forecast(simple_avg_future, manual_future_series, manual_weight)
+    simple_avg_metrics = calc_metrics(historical_series, simple_avg_pred)
+
+    # ============================
+    # 2. Running Average
+    # ============================
+    run_avg_pred = historical_series.expanding().mean()
+    run_avg_future = pd.Series(run_avg_pred.iloc[-1], index=future_index)
+    run_avg_future = blend_forecast(run_avg_future, manual_future_series, manual_weight)
+    run_avg_metrics = calc_metrics(historical_series, run_avg_pred)
+
+    # ============================
+    # 3. ETS (Holt-Winters)
+    # ============================
+    try:
+        ets_model = ExponentialSmoothing(historical_series,
+                                         trend='add',
+                                         seasonal='add',
+                                         seasonal_periods=12).fit()
+        ets_pred_hist = ets_model.fittedvalues
+        ets_future = pd.Series(ets_model.forecast(future_months), index=future_index)
+        ets_future = blend_forecast(ets_future, manual_future_series, manual_weight)
+        ets_metrics = calc_metrics(historical_series, ets_pred_hist)
+    except:
+        ets_pred_hist = pd.Series([np.nan]*len(historical_series), index=dates)
+        ets_future = pd.Series([np.nan]*future_months, index=future_index)
+        ets_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # ============================
+    # 4. ARIMA
+    # ============================
+    try:
+        arima_model = auto_arima(historical_series, seasonal=False, stepwise=True, suppress_warnings=True)
+        arima_pred_hist = pd.Series(arima_model.predict_in_sample(), index=dates)
+        arima_future = pd.Series(arima_model.predict(n_periods=future_months), index=future_index)
+        arima_future = blend_forecast(arima_future, manual_future_series, manual_weight)
+        arima_metrics = calc_metrics(historical_series, arima_pred_hist)
+    except:
+        arima_pred_hist = pd.Series([np.nan]*len(historical_series), index=dates)
+        arima_future = pd.Series([np.nan]*future_months, index=future_index)
+        arima_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # ============================
+    # 5. SARIMA (Seasonal ARIMA)
+    # ============================
+    try:
+        sarima_model = auto_arima(historical_series,
+                                  seasonal=True,
+                                  m=12,
+                                  stepwise=True,
+                                  suppress_warnings=True)
+        sarima_pred_hist = pd.Series(sarima_model.predict_in_sample(), index=dates)
+        sarima_future = pd.Series(sarima_model.predict(n_periods=future_months), index=future_index)
+        sarima_future = blend_forecast(sarima_future, manual_future_series, manual_weight)
+        sarima_metrics = calc_metrics(historical_series, sarima_pred_hist)
+    except:
+        sarima_pred_hist = pd.Series([np.nan]*len(historical_series), index=dates)
+        sarima_future = pd.Series([np.nan]*future_months, index=future_index)
+        sarima_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # ============================
+    # 6. Prophet
+    # ============================
+    try:
+        prophet_df = historical_series.reset_index()
+        prophet_df.columns = ['ds', 'y']
+        prophet_model = Prophet(daily_seasonality=False, yearly_seasonality=True)
+        prophet_model.fit(prophet_df)
+
+        forecast_hist = prophet_model.predict(prophet_df)
+        prophet_pred_hist = pd.Series(forecast_hist['yhat'].values, index=dates)
+
+        future_df = pd.DataFrame({'ds': future_index})
+        prophet_future = pd.Series(prophet_model.predict(future_df)['yhat'].values, index=future_index)
+        prophet_future = blend_forecast(prophet_future, manual_future_series, manual_weight)
+        prophet_metrics = calc_metrics(historical_series, prophet_pred_hist)
+    except:
+        prophet_pred_hist = pd.Series([np.nan]*len(historical_series), index=dates)
+        prophet_future = pd.Series([np.nan]*future_months, index=future_index)
+        prophet_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # ============================
+    # 7. Linear Regression
+    # ============================
+    try:
+        X = np.arange(len(historical_series)).reshape(-1, 1)
+        lr_model = LinearRegression().fit(X, y)
+        lr_pred_hist = pd.Series(lr_model.predict(X), index=dates)
+
+        X_future = np.arange(len(historical_series), len(historical_series)+future_months).reshape(-1, 1)
+        lr_future = pd.Series(lr_model.predict(X_future), index=future_index)
+        lr_future = blend_forecast(lr_future, manual_future_series, manual_weight)
+        lr_metrics = calc_metrics(historical_series, lr_pred_hist)
+    except:
+        lr_pred_hist = pd.Series([np.nan]*len(historical_series), index=dates)
+        lr_future = pd.Series([np.nan]*future_months, index=future_index)
+        lr_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
+
+    # ============================
+    # Save Metrics
+    # ============================
+    models = ['Simple Average', 'Running Average', 'ETS', 'ARIMA', 'SARIMA', 'Prophet', 'Linear Regression']
+    metrics_list = [simple_avg_metrics, run_avg_metrics, ets_metrics, arima_metrics,
+                    sarima_metrics, prophet_metrics, lr_metrics]
+
+    for model_name, metrics in zip(models, metrics_list):
+        metrics_results.append({
+            'Column': column,
+            'Model': model_name,
+            **metrics
+        })
+
+    # ============================
+    # Save Historical Predictions
+    # ============================
+    hist_df = pd.DataFrame({
+        'Date': dates,
+        'Actual': historical_series.values,
+        'Simple Average': simple_avg_pred.values,
+        'Running Average': run_avg_pred.values,
+        'ETS': ets_pred_hist.values,
+        'ARIMA': arima_pred_hist.values,
+        'SARIMA': sarima_pred_hist.values,
+        'Prophet': prophet_pred_hist.values,
+        'Linear Regression': lr_pred_hist.values,
+        'Column': column
+    })
+    historical_predictions.append(hist_df)
+
+    # ============================
+    # Save Future Forecasts (Blended)
+    # ============================
+    future_df = pd.DataFrame({
+        'Date': future_index,
+        'Simple Average': simple_avg_future.values,
+        'Running Average': run_avg_future.values,
+        'ETS': ets_future.values,
+        'ARIMA': arima_future.values,
+        'SARIMA': sarima_future.values,
+        'Prophet': prophet_future.values,
+        'Linear Regression': lr_future.values,
+        'Column': column
+    })
+    future_forecasts.append(future_df)
+
+# =======================================
+# 6. Combine Outputs for Qlik Sense
+# =======================================
+metrics_df = pd.DataFrame(metrics_results)
+metrics_df['Type'] = 'Metric'
+
+hist_df_final = pd.concat(historical_predictions)
+hist_melt = hist_df_final.melt(id_vars=['Date', 'Actual', 'Column'],
+                               var_name='Model',
+                               value_name='Predicted')
+hist_melt = hist_melt[hist_melt['Model'] != 'Actual']
+hist_melt['Type'] = 'Historical'
+
+future_df_final = pd.concat(future_forecasts)
+future_melt = future_df_final.melt(id_vars=['Date', 'Column'],
+                                   var_name='Model',
+                                   value_name='Predicted')
+future_melt['Type'] = 'Forecast'
+future_melt['Actual'] = np.nan
+
+combined_df = pd.concat([metrics_df, hist_melt, future_melt], ignore_index=True)
+
+# Save single CSV for Qlik Sense
+combined_df.to_csv("forecast_all_in_one.csv", index=False)
+
+print("Unified forecast data saved to forecast_all_in_one.csv for Qlik Sense")
