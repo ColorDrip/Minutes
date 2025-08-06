@@ -11,26 +11,23 @@ import warnings
 
 warnings.filterwarnings("ignore", message=".*Plotly.*")
 
-# =======================================
-# 1. Configurations
-# =======================================
-
+# ==========================
+# Configurations
+# ==========================
 file_path = "your_file.xlsx"    # Input file
-future_months = 60              # Forecast horizon (5 years)
+future_months = 60              # Forecast horizon
 
-# =======================================
-# 2. Load & Preprocess Data
-# =======================================
-
+# ==========================
+# Load & Preprocess
+# ==========================
 df = pd.read_excel(file_path)
-df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)  # Parse dates
-df = df.set_index('Date').resample('M').mean()          # Monthly frequency
-df = df.dropna(how='all', axis=1)                       # Drop empty columns
+df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)
+df = df.set_index('Date').resample('M').mean()
+df = df.dropna(how='all', axis=1)
 
-# =======================================
-# 3. Metric Calculation Function
-# =======================================
-
+# ==========================
+# Metrics Function
+# ==========================
 def calc_metrics(actual, predicted):
     mae = mean_absolute_error(actual, predicted)
     mape = mean_absolute_percentage_error(actual, predicted) * 100
@@ -39,50 +36,122 @@ def calc_metrics(actual, predicted):
     accuracy = 100 - mape
     return {'MAE': mae, 'MAPE': mape, 'RMSE': rmse, 'R2': r2, 'Accuracy%': accuracy}
 
-# =======================================
-# 4. Storage for Results
-# =======================================
+# ==========================
+# XGBoost Helper Functions
+# ==========================
+def create_features(series):
+    """Create lag, rolling and seasonal features for XGBoost"""
+    df_feat = pd.DataFrame({'y': series})
+    df_feat['month'] = series.index.month
+    df_feat['year'] = series.index.year
+    df_feat['month_sin'] = np.sin(2 * np.pi * df_feat['month'] / 12)
+    df_feat['month_cos'] = np.cos(2 * np.pi * df_feat['month'] / 12)
+    df_feat['lag1'] = df_feat['y'].shift(1)
+    df_feat['lag2'] = df_feat['y'].shift(2)
+    df_feat['lag3'] = df_feat['y'].shift(3)
+    df_feat['roll3'] = df_feat['y'].rolling(3).mean()
+    df_feat['roll6'] = df_feat['y'].rolling(6).mean()
+    df_feat['roll12'] = df_feat['y'].rolling(12).mean()
+    return df_feat.dropna()
 
+def forecast_xgboost(series, future_months, future_known_values=None):
+    """Train XGBoost and forecast future months"""
+    df_feat = create_features(series)
+
+    # Train/Test split
+    X = df_feat.drop('y', axis=1)
+    y = df_feat['y']
+
+    model = XGBRegressor(
+        objective='reg:squarederror',
+        n_estimators=500,
+        learning_rate=0.1,
+        max_depth=5,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        reg_lambda=1.0,
+        random_state=42
+    )
+    model.fit(X, y)
+
+    # Historical predictions
+    hist_pred = pd.Series(model.predict(X), index=df_feat.index)
+
+    # Future forecasting
+    future_index = pd.date_range(series.index[-1] + pd.DateOffset(months=1),
+                                 periods=future_months, freq='M')
+
+    last_values = series.copy()
+    future_preds = []
+
+    for i in range(future_months):
+        current_date = future_index[i]
+
+        # Build features for current forecast
+        month = current_date.month
+        year = current_date.year
+        lags = last_values[-3:].values if len(last_values) >= 3 else [np.nan]*3
+
+        feat = pd.DataFrame({
+            'month': [month],
+            'year': [year],
+            'month_sin': [np.sin(2 * np.pi * month / 12)],
+            'month_cos': [np.cos(2 * np.pi * month / 12)],
+            'lag1': [lags[-1]],
+            'lag2': [lags[-2] if len(lags) > 1 else np.nan],
+            'lag3': [lags[-3] if len(lags) > 2 else np.nan],
+            'roll3': [last_values[-3:].mean()],
+            'roll6': [last_values[-6:].mean()],
+            'roll12': [last_values[-12:].mean()]
+        })
+
+        pred = model.predict(feat)[0]
+
+        # Blend prediction with known actual if provided
+        if future_known_values is not None and current_date in future_known_values.index:
+            actual_value = future_known_values.loc[current_date]
+            # Weighted average (70% known actual, 30% model prediction)
+            pred = 0.7 * actual_value + 0.3 * pred
+
+        future_preds.append(pred)
+        last_values.loc[current_date] = pred  # Append for next lag
+
+    future_series = pd.Series(future_preds, index=future_index)
+    return hist_pred, future_series
+
+# ==========================
+# Process Each Column
+# ==========================
 metrics_results = []
 historical_predictions = []
 future_forecasts = []
 
-# =======================================
-# 5. Process Each Column (Time Series)
-# =======================================
-
 for column in df.columns:
     series = df[column].dropna()
-
     if series.empty or len(series) < 2:
         print(f"Skipping {column} – not enough data")
         continue
 
     dates = series.index
-    y = series.values
+    future_index = pd.date_range(dates[-1] + pd.DateOffset(months=1),
+                                 periods=future_months, freq='M')
+
+    # Known future values (if present)
+    future_known = df[column][df.index > dates[-1]]
 
     print(f"\n--- Processing {column} ---")
 
-    # -------------------------------------------------
-    # Baseline Models
-    # -------------------------------------------------
-
-    # Simple Average (constant mean)
+    # 1. Simple Avg
     simple_avg_pred = pd.Series(series.mean(), index=dates)
-    future_index = pd.date_range(dates[-1] + pd.DateOffset(months=1),
-                                 periods=future_months,
-                                 freq='M')
     simple_avg_future = pd.Series(series.mean(), index=future_index)
     simple_avg_metrics = calc_metrics(series, simple_avg_pred)
 
-    # Cumulative Running Average (progressive mean)
+    # 2. Running Avg
     run_avg_pred = series.expanding().mean()
     run_avg_future = pd.Series(run_avg_pred.iloc[-1], index=future_index)
     run_avg_metrics = calc_metrics(series, run_avg_pred)
 
-    # -------------------------------------------------
-    # 1. ETS (Holt-Winters)
-    # -------------------------------------------------
+    # 3. ETS
     try:
         ets_model = ExponentialSmoothing(series, trend='add', seasonal='add', seasonal_periods=12).fit()
         ets_pred_hist = ets_model.fittedvalues
@@ -93,9 +162,7 @@ for column in df.columns:
         ets_future = pd.Series([np.nan]*future_months, index=future_index)
         ets_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
 
-    # -------------------------------------------------
-    # 2. ARIMA
-    # -------------------------------------------------
+    # 4. ARIMA
     try:
         arima_model = auto_arima(series, seasonal=False, stepwise=True, suppress_warnings=True)
         arima_pred_hist = pd.Series(arima_model.predict_in_sample(), index=dates)
@@ -106,15 +173,9 @@ for column in df.columns:
         arima_future = pd.Series([np.nan]*future_months, index=future_index)
         arima_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
 
-    # -------------------------------------------------
-    # 3. SARIMA (Seasonal ARIMA)
-    # -------------------------------------------------
+    # 5. SARIMA
     try:
-        sarima_model = auto_arima(series,
-                                  seasonal=True,
-                                  m=12,
-                                  stepwise=True,
-                                  suppress_warnings=True)
+        sarima_model = auto_arima(series, seasonal=True, m=12, stepwise=True, suppress_warnings=True)
         sarima_pred_hist = pd.Series(sarima_model.predict_in_sample(), index=dates)
         sarima_future = pd.Series(sarima_model.predict(n_periods=future_months), index=future_index)
         sarima_metrics = calc_metrics(series, sarima_pred_hist)
@@ -123,90 +184,45 @@ for column in df.columns:
         sarima_future = pd.Series([np.nan]*future_months, index=future_index)
         sarima_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
 
-    # -------------------------------------------------
-    # 4. Prophet
-    # -------------------------------------------------
+    # 6. Prophet
     try:
         prophet_df = series.reset_index()
         prophet_df.columns = ['ds', 'y']
         prophet_model = Prophet(daily_seasonality=False, yearly_seasonality=True)
         prophet_model.fit(prophet_df)
-
         forecast_hist = prophet_model.predict(prophet_df)
         prophet_pred_hist = pd.Series(forecast_hist['yhat'].values, index=dates)
-
         future_df = pd.DataFrame({'ds': future_index})
         prophet_future = pd.Series(prophet_model.predict(future_df)['yhat'].values, index=future_index)
-
         prophet_metrics = calc_metrics(series, prophet_pred_hist)
     except:
         prophet_pred_hist = pd.Series([np.nan]*len(series), index=dates)
         prophet_future = pd.Series([np.nan]*future_months, index=future_index)
         prophet_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
 
-    # -------------------------------------------------
-    # 5. Linear Regression
-    # -------------------------------------------------
+    # 7. Linear Regression
     try:
         X = np.arange(len(series)).reshape(-1, 1)
-        lr_model = LinearRegression().fit(X, y)
+        lr_model = LinearRegression().fit(X, series.values)
         lr_pred_hist = pd.Series(lr_model.predict(X), index=dates)
-
         X_future = np.arange(len(series), len(series)+future_months).reshape(-1, 1)
         lr_future = pd.Series(lr_model.predict(X_future), index=future_index)
-
         lr_metrics = calc_metrics(series, lr_pred_hist)
     except:
         lr_pred_hist = pd.Series([np.nan]*len(series), index=dates)
         lr_future = pd.Series([np.nan]*future_months, index=future_index)
         lr_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
 
-    # -------------------------------------------------
-    # 6. XGBoost Forecasting
-    # -------------------------------------------------
+    # 8. XGBoost (NEW)
     try:
-        # Feature Engineering
-        df_feat = pd.DataFrame({
-            'y': y,
-            'month': dates.month,
-            'year': dates.year,
-            'lag1': np.roll(y, 1),
-            'lag2': np.roll(y, 2),
-            'lag3': np.roll(y, 3)
-        })
-        df_feat = df_feat.iloc[3:]  # drop initial rows with NaN lags
-
-        # Train
-        X_train = df_feat[['month', 'year', 'lag1', 'lag2', 'lag3']]
-        y_train = df_feat['y']
-        xgb_model = XGBRegressor(objective='reg:squarederror', n_estimators=200, learning_rate=0.05)
-        xgb_model.fit(X_train, y_train)
-
-        # Predict historical
-        xgb_pred_hist = pd.Series(xgb_model.predict(X_train), index=dates[3:])
-
-        # Predict future
-        future_years = future_index.year
-        future_months_num = future_index.month
-        last_values = list(y[-3:])  # last 3 values for lags
-        future_preds = []
-        for i in range(future_months):
-            lag1, lag2, lag3 = last_values[-1], last_values[-2], last_values[-3]
-            features = np.array([[future_months_num[i], future_years[i], lag1, lag2, lag3]])
-            pred = xgb_model.predict(features)[0]
-            future_preds.append(pred)
-            last_values.append(pred)
-
-        xgb_future = pd.Series(future_preds, index=future_index)
-        xgb_metrics = calc_metrics(series[3:], xgb_pred_hist)
+        xgb_hist, xgb_future = forecast_xgboost(series, future_months, future_known)
+        xgb_metrics = calc_metrics(series, xgb_hist)
     except:
-        xgb_pred_hist = pd.Series([np.nan]*len(series), index=dates)
+        xgb_hist = pd.Series([np.nan]*len(series), index=dates)
         xgb_future = pd.Series([np.nan]*future_months, index=future_index)
         xgb_metrics = {'MAE': np.nan, 'MAPE': np.nan, 'RMSE': np.nan, 'R2': np.nan, 'Accuracy%': np.nan}
 
-    # -------------------------------------------------
-    # Save Metrics
-    # -------------------------------------------------
+    # Save metrics
     models = ['Simple Average', 'Running Average', 'ETS', 'ARIMA', 'SARIMA', 'Prophet', 'Linear Regression', 'XGBoost']
     metrics_list = [simple_avg_metrics, run_avg_metrics, ets_metrics, arima_metrics,
                     sarima_metrics, prophet_metrics, lr_metrics, xgb_metrics]
@@ -218,9 +234,7 @@ for column in df.columns:
             **metrics
         })
 
-    # -------------------------------------------------
-    # Save Historical Predictions
-    # -------------------------------------------------
+    # Save historical predictions
     hist_df = pd.DataFrame({
         'Date': dates,
         'Actual': series.values,
@@ -231,14 +245,12 @@ for column in df.columns:
         'SARIMA': sarima_pred_hist.values,
         'Prophet': prophet_pred_hist.values,
         'Linear Regression': lr_pred_hist.values,
-        'XGBoost': xgb_pred_hist.reindex(dates).values,
+        'XGBoost': xgb_hist.values,
         'Column': column
     })
     historical_predictions.append(hist_df)
 
-    # -------------------------------------------------
-    # Save Future Forecasts
-    # -------------------------------------------------
+    # Save future forecasts
     future_df = pd.DataFrame({
         'Date': future_index,
         'Simple Average': simple_avg_future.values,
@@ -253,10 +265,7 @@ for column in df.columns:
     })
     future_forecasts.append(future_df)
 
-# =======================================
-# 6. Combine Outputs for Qlik Sense
-# =======================================
-
+# Combine & Export
 metrics_df = pd.DataFrame(metrics_results)
 metrics_df['Type'] = 'Metric'
 
@@ -276,7 +285,5 @@ future_melt['Actual'] = np.nan
 
 combined_df = pd.concat([metrics_df, hist_melt, future_melt], ignore_index=True)
 
-# Save single CSV for Qlik Sense
-combined_df.to_csv("forecast_all_in_one.csv", index=False)
-
-print("Unified forecast data saved to forecast_all_in_one.csv for Qlik Sense")
+combined_df.to_csv("forecast_all_in_one_with_xgb.csv", index=False)
+print("Unified forecast data saved to forecast_all_in_one_with_xgb.csv")
