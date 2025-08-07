@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Project Idea Submission</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f4f6f8;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: auto;
+      background: white;
+      border-radius: 10px;
+      padding: 30px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+    }
+    h2 {
+      text-align: center;
+      color: #333;
+    }
+    .section {
+      margin-bottom: 30px;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+    .required-star {
+      color: red;
+      margin-left: 3px;
+    }
+    input[type="text"],
+    textarea,
+    select {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    .radio-group {
+      margin-bottom: 15px;
+    }
+    .radio-group input {
+      margin-right: 10px;
+    }
+    .btn {
+      background-color: #0078D4;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      font-size: 16px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .btn:hover {
+      background-color: #005fa3;
+    }
+    .note {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>Project / Idea Submission</h2>
+  <p class="note">Fields marked with <span class="required-star">*</span> are required.</p>
+
+  <!-- Project Type -->
+  <div class="section">
+    <label>Project Type<span class="required-star">*</span></label>
+    <div class="radio-group">
+      <label><input type="radio" name="projectType" value="Automation" required /> Automation</label>
+      <label><input type="radio" name="projectType" value="Report" /> Report</label>
+      <label><input type="radio" name="projectType" value="Workflow" /> Workflow</label>
+      <label><input type="radio" name="projectType" value="Other" /> Other</label>
+    </div>
+  </div>
+
+  <!-- Service Type Search -->
+  <div class="section">
+    <label for="serviceSearch">Search Service<span class="required-star">*</span></label>
+    <input type="text" id="serviceSearch" placeholder="Search for a service..." required />
+
+    <label for="serviceName">Selected Service<span class="required-star">*</span></label>
+    <input type="text" id="serviceName" placeholder="Service name will appear here" required />
+  </div>
+
+  <!-- Details Section -->
+  <div class="section">
+    <label>Region<span class="required-star">*</span></label>
+    <input type="text" required />
+
+    <label>Market<span class="required-star">*</span></label>
+    <input type="text" required />
+
+    <label>Frequency<span class="required-star">*</span></label>
+    <input type="text" required />
+
+    <label>Category<span class="required-star">*</span></label>
+    <input type="text" required />
+
+    <label>Current Effort (hrs)<span class="required-star">*</span></label>
+    <input type="text" required />
+
+    <label>Monthly Time Saved (hrs)<span class="required-star">*</span></label>
+    <input type="text" required />
+
+    <label>Expected Monthly Report Count<span class="required-star">*</span></label>
+    <input type="text" required />
+
+    <label>Problem Statement<span class="required-star">*</span></label>
+    <textarea rows="3" required></textarea>
+
+    <label>Idea Description<span class="required-star">*</span></label>
+    <textarea rows="3" required></textarea>
+
+    <label>Phase of the Idea<span class="required-star">*</span></label>
+    <input type="text" required />
+
+    <label>Expected Completion Date<span class="required-star">*</span></label>
+    <input type="text" required />
+
+    <label>Developer Name<span class="required-star">*</span></label>
+    <input type="text" required />
+  </div>
+
+  <!-- Submit Button -->
+  <div class="section">
+    <button class="btn" type="submit">Submit Idea</button>
+  </div>
+
+</div>
+
+</body>
+</html>
