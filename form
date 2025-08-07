@@ -34,6 +34,38 @@
       margin-bottom: 30px;
     }
 
+    .tabs {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 30px;
+    }
+
+    .tab-button {
+      background-color: #e7eaf0;
+      border: none;
+      padding: 12px 24px;
+      margin: 0 5px;
+      border-radius: 8px 8px 0 0;
+      font-size: 16px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    .tab-button.active {
+      background-color: #ffffff;
+      border-bottom: 3px solid #0078d4;
+      color: #0078d4;
+      font-weight: bold;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
     .form-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -123,90 +155,132 @@
   <h2>Project / Idea Submission</h2>
   <p class="note">Fields marked with <span class="required-star">*</span> are required.</p>
 
-  <!-- Project Type -->
-  <div class="form-group full-width">
-    <label>Project Type<span class="required-star">*</span></label>
-    <div class="radio-group">
-      <label><input type="radio" name="projectType" value="Automation" required /> Automation</label>
-      <label><input type="radio" name="projectType" value="Report" /> Report</label>
-      <label><input type="radio" name="projectType" value="Workflow" /> Workflow</label>
-      <label><input type="radio" name="projectType" value="Other" /> Other</label>
-    </div>
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-button active" onclick="openTab(event, 'detailsTab')">Details</button>
+    <button class="tab-button" onclick="openTab(event, 'approvalTab')">Approval</button>
   </div>
 
-  <!-- Service Search -->
-  <div class="form-grid">
-    <div class="form-group">
-      <label for="serviceSearch">Search Service<span class="required-star">*</span></label>
-      <input type="text" id="serviceSearch" placeholder="Search for a service..." required />
-    </div>
-    <div class="form-group">
-      <label for="serviceName">Selected Service<span class="required-star">*</span></label>
-      <input type="text" id="serviceName" placeholder="Service name will appear here" required />
-    </div>
-  </div>
+  <form>
+    <!-- Details Tab -->
+    <div id="detailsTab" class="tab-content active">
+      <div class="form-group full-width">
+        <label>Project Type<span class="required-star">*</span></label>
+        <div class="radio-group">
+          <label><input type="radio" name="projectType" value="Automation" required /> Automation</label>
+          <label><input type="radio" name="projectType" value="Report" /> Report</label>
+          <label><input type="radio" name="projectType" value="Workflow" /> Workflow</label>
+          <label><input type="radio" name="projectType" value="Other" /> Other</label>
+        </div>
+      </div>
 
-  <!-- Project Details -->
-  <div class="form-grid">
-    <div class="form-group">
-      <label>Region<span class="required-star">*</span></label>
-      <input type="text" required />
-    </div>
-    <div class="form-group">
-      <label>Market<span class="required-star">*</span></label>
-      <input type="text" required />
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Search Service<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+        <div class="form-group">
+          <label>Selected Service<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+
+        <div class="form-group">
+          <label>Region<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+        <div class="form-group">
+          <label>Market<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+
+        <div class="form-group">
+          <label>Frequency<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+        <div class="form-group">
+          <label>Category<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+
+        <div class="form-group">
+          <label>Current Effort (hrs)<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+        <div class="form-group">
+          <label>Monthly Time Saved (hrs)<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+
+        <div class="form-group">
+          <label>Expected Monthly Report Count<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+        <div class="form-group">
+          <label>Phase of the Idea<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+
+        <div class="form-group">
+          <label>Expected Completion Date<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+        <div class="form-group">
+          <label>Developer Name<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+
+        <div class="form-group full-width">
+          <label>Problem Statement<span class="required-star">*</span></label>
+          <textarea rows="3" required></textarea>
+        </div>
+
+        <div class="form-group full-width">
+          <label>Idea Description<span class="required-star">*</span></label>
+          <textarea rows="3" required></textarea>
+        </div>
+      </div>
     </div>
 
-    <div class="form-group">
-      <label>Frequency<span class="required-star">*</span></label>
-      <input type="text" required />
-    </div>
-    <div class="form-group">
-      <label>Category<span class="required-star">*</span></label>
-      <input type="text" required />
+    <!-- Approval Tab -->
+    <div id="approvalTab" class="tab-content">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Approver Name<span class="required-star">*</span></label>
+          <input type="text" required />
+        </div>
+        <div class="form-group">
+          <label>Approval Status<span class="required-star">*</span></label>
+          <select required>
+            <option value="">Select</option>
+            <option value="Approved">Approved</option>
+            <option value="Pending">Pending</option>
+            <option value="Rejected">Rejected</option>
+          </select>
+        </div>
+
+        <div class="form-group full-width">
+          <label>Approval Comments</label>
+          <textarea rows="3"></textarea>
+        </div>
+      </div>
     </div>
 
-    <div class="form-group">
-      <label>Current Effort (hrs)<span class="required-star">*</span></label>
-      <input type="text" required />
-    </div>
-    <div class="form-group">
-      <label>Monthly Time Saved (hrs)<span class="required-star">*</span></label>
-      <input type="text" required />
-    </div>
-
-    <div class="form-group">
-      <label>Expected Monthly Report Count<span class="required-star">*</span></label>
-      <input type="text" required />
-    </div>
-    <div class="form-group">
-      <label>Phase of the Idea<span class="required-star">*</span></label>
-      <input type="text" required />
-    </div>
-
-    <div class="form-group">
-      <label>Expected Completion Date<span class="required-star">*</span></label>
-      <input type="text" required />
-    </div>
-    <div class="form-group">
-      <label>Developer Name<span class="required-star">*</span></label>
-      <input type="text" required />
-    </div>
-
-    <div class="form-group full-width">
-      <label>Problem Statement<span class="required-star">*</span></label>
-      <textarea rows="3" required></textarea>
-    </div>
-
-    <div class="form-group full-width">
-      <label>Idea Description<span class="required-star">*</span></label>
-      <textarea rows="3" required></textarea>
-    </div>
-  </div>
-
-  <!-- Submit -->
-  <button class="btn" type="submit">Submit Idea</button>
+    <button class="btn" type="submit">Submit Idea</button>
+  </form>
 </div>
+
+<script>
+  function openTab(evt, tabId) {
+    const tabButtons = document.querySelectorAll(".tab-button");
+    const tabContents = document.querySelectorAll(".tab-content");
+
+    tabButtons.forEach(btn => btn.classList.remove("active"));
+    tabContents.forEach(tab => tab.classList.remove("active"));
+
+    document.getElementById(tabId).classList.add("active");
+    evt.currentTarget.classList.add("active");
+  }
+</script>
 
 </body>
 </html>
