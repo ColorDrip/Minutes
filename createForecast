@@ -6,75 +6,47 @@ from statsmodels.tsa.stattools import adfuller
 from pmdarima import auto_arima
 from sklearn.metrics import mean_absolute_error
 
-# Step 1: Load and Understand the Data
-data = pd.read_csv('your_file.csv')  # Replace with your CSV path
+# Step 1: Load and Prepare Data
+data = pd.read_csv('your_file.csv')  # Replace with actual file path
 data['date'] = pd.to_datetime(data['date'])
 data.set_index('date', inplace=True)
 
-# Dynamically identify numerical columns
+# Ensure monthly frequency
+data = data.asfreq('MS')  # Month Start; use 'M' for Month End
+print(f"Data frequency detected: {data.index.freq}")
+
+# Identify numeric columns
 numerical_columns = data.select_dtypes(include=[np.number]).columns.tolist()
 if not numerical_columns:
     raise ValueError("No numerical columns found in the CSV.")
 
-# Plot raw data
-for col in numerical_columns:
-    plt.figure(figsize=(10, 5))
-    plt.plot(data[col], label=f'Raw {col}')
-    plt.title(f'Raw {col} Data')
-    plt.xlabel('Date')
-    plt.ylabel(col)
-    plt.legend()
-    plt.show()
-
-# Step 2: Preprocess the Data (Improved)
+# Step 2: Preprocess function
 def preprocess_series(series):
-    # Percentile-based outlier detection
     lower, upper = series.quantile([0.01, 0.99])
     series_cleaned = series.clip(lower=lower, upper=upper)
-    # Exponential moving average
-    series_smoothed = series_cleaned.ewm(span=7).mean().dropna()
+    series_smoothed = series_cleaned.ewm(span=3).mean().dropna()
     return series_smoothed
 
 smoothed_data = pd.DataFrame(index=data.index)
 for col in numerical_columns:
     smoothed_data[col] = preprocess_series(data[col])
 
-# Plot smoothed data
-for col in numerical_columns:
-    plt.figure(figsize=(10, 5))
-    plt.plot(data[col], label=f'Raw {col}', alpha=0.5)
-    plt.plot(smoothed_data[col], label=f'Smoothed {col}', color='red')
-    plt.title(f'Smoothed {col} Data')
-    plt.xlabel('Date')
-    plt.ylabel(col)
-    plt.legend()
-    plt.show()
-
-# Step 3: Decompose the Time Series
+# Step 3: STL Decomposition
 for col in numerical_columns:
     try:
-        stl = STL(smoothed_data[col], period=7)  # Adjust to 12 for monthly
+        stl = STL(smoothed_data[col], period=12)  # 12 for yearly seasonality in monthly data
         result = stl.fit()
-        plt.figure(figsize=(10, 8))
-        plt.subplot(411)
-        plt.plot(smoothed_data[col], label=f'Smoothed {col}')
-        plt.title(f'Decomposition of {col}')
-        plt.legend()
-        plt.subplot(412)
-        plt.plot(result.trend, label='Trend')
-        plt.legend()
-        plt.subplot(413)
-        plt.plot(result.seasonal, label='Seasonality')
-        plt.legend()
-        plt.subplot(414)
-        plt.plot(result.resid, label='Residuals')
-        plt.legend()
+        fig, axes = plt.subplots(4, 1, figsize=(10, 8))
+        axes[0].plot(smoothed_data[col]); axes[0].set_title(f'Smoothed {col}')
+        axes[1].plot(result.trend); axes[1].set_title('Trend')
+        axes[2].plot(result.seasonal); axes[2].set_title('Seasonality')
+        axes[3].plot(result.resid); axes[3].set_title('Residuals')
         plt.tight_layout()
         plt.show()
-    except:
-        print(f"Decomposition failed for {col}. Skipping.")
+    except Exception as e:
+        print(f"Decomposition failed for {col}: {e}")
 
-# Step 4: Stationarize the Data (Improved)
+# Step 4: Stationarity Check
 def check_stationarity(series):
     result = adfuller(series.dropna())
     print(f'{series.name} - ADF Statistic: {result[0]}, p-value: {result[1]}')
@@ -82,88 +54,67 @@ def check_stationarity(series):
 
 stationary_data = pd.DataFrame(index=smoothed_data.index)
 for col in numerical_columns:
-    transformed = np.log(smoothed_data[col] + 1)  # Log transform
+    transformed = np.log(smoothed_data[col] + 1)
     if not check_stationarity(transformed):
         stationary_data[col] = transformed.diff().dropna()
     else:
         stationary_data[col] = transformed
 
-# Step 5 & 6: Fit Auto-ARIMA Model and Evaluate (Improved)
+# Step 5: Train/Test Split & Forecast (One Fit Per Column)
 forecasts = {}
+future_forecasts = {}
 mses = {}
 maes = {}
 train_size = int(len(smoothed_data) * 0.7)
+
 for col in numerical_columns:
     train = smoothed_data[col][:train_size]
     test = smoothed_data[col][train_size:]
+
     try:
-        # Auto-ARIMA
-        model = auto_arima(train, seasonal=True, m=7, suppress_warnings=True)
-        model_fit = model.fit(train)
-        forecast = model.predict(n_periods=len(test))
+        # Fit once
+        model = auto_arima(train.asfreq('MS'), seasonal=True, m=12, suppress_warnings=True)
+        model_fit = model.fit(train.asfreq('MS'))
+
+        # Test forecast
+        forecast_vals = model_fit.predict(n_periods=len(test))
+        forecast = pd.Series(forecast_vals, index=test.index)
         forecasts[col] = forecast
-        
-        # Calculate MSE and MAE
-        mse = ((forecast - test) ** 2).mean()
-        mae = mean_absolute_error(test, forecast)
-        mses[col] = mse
-        maes[col] = mae
-        
-        # Plot
+
+        # Metrics
+        mses[col] = ((forecast - test) ** 2).mean()
+        maes[col] = mean_absolute_error(test, forecast)
+
+        # Plot Train/Test Forecast
         plt.figure(figsize=(10, 5))
-        plt.plot(train, label=f'Training {col}')
-        plt.plot(test, label=f'Test {col}', color='orange')
-        plt.plot(test.index, forecast, label=f'Forecast {col}', color='green')
-        plt.title(f'Auto-ARIMA Forecast vs Actual for {col}')
-        plt.xlabel('Date')
-        plt.ylabel(col)
+        plt.plot(train, label='Train')
+        plt.plot(test, label='Test', color='orange')
+        plt.plot(test.index, forecast, label='Forecast', color='green')
+        plt.title(f'{col} - Train/Test Forecast')
         plt.legend()
         plt.show()
-        print(f'MSE for {col}: {mse:.2f}, MAE: {mae:.2f}')
-    except:
-        print(f"Auto-ARIMA fitting failed for {col}. Skipping.")
 
-# Step 7: Forecast Future Values
-future_forecasts = {}
-future_dates = pd.date_range(start=smoothed_data.index[-1] + pd.Timedelta(days=1), periods=7, freq='D')
-for col in numerical_columns:
-    try:
-        model = auto_arima(smoothed_data[col], seasonal=True, m=7, suppress_warnings=True)
-        model_fit = model.fit(smoothed_data[col])
-        future_forecasts[col] = model.predict(n_periods=7)
-        
+        print(f"{col} - MSE: {mses[col]:.2f}, MAE: {maes[col]:.2f}")
+
+        # Future forecast
+        future_dates = pd.date_range(start=smoothed_data.index[-1] + pd.offsets.MonthBegin(),
+                                     periods=7, freq='MS')
+        future_vals = model_fit.predict(n_periods=7)
+        future_series = pd.Series(future_vals, index=future_dates)
+        future_forecasts[col] = future_series
+
+        # Plot future forecast
         plt.figure(figsize=(10, 5))
-        plt.plot(smoothed_data[col], label=f'Smoothed {col}')
-        plt.plot(future_dates, future_forecasts[col], label=f'Future Forecast {col}', color='green')
-        plt.title(f'{col} with Future Forecast')
-        plt.xlabel('Date')
-        plt.ylabel(col)
+        plt.plot(smoothed_data[col], label='Smoothed Data')
+        plt.plot(future_series.index, future_series, label='Future Forecast', color='red')
+        plt.title(f'{col} - Future Forecast')
         plt.legend()
         plt.show()
-    except:
-        print(f"Future forecast failed for {col}. Skipping.")
 
-# Step 8: Handle Remaining Noise
-for col in numerical_columns:
-    try:
-        stl = STL(smoothed_data[col], period=7)
-        result = stl.fit()
-        residual = result.resid
-        residual_std = residual.std()
-        anomalies = residual[abs(residual) > 2 * residual_std]
-        
-        plt.figure(figsize=(10, 5))
-        plt.plot(smoothed_data[col], label=f'Smoothed {col}')
-        plt.scatter(anomalies.index, smoothed_data[col][anomalies.index], color='red', label='Anomalies')
-        plt.title(f'{col} with Detected Anomalies')
-        plt.xlabel('Date')
-        plt.ylabel(col)
-        plt.legend()
-        plt.show()
-    except:
-        print(f"Anomaly detection failed for {col}. Skipping.")
+    except Exception as e:
+        print(f"ARIMA failed for {col}: {e}")
 
-# Save Forecasts
-forecast_df = pd.DataFrame(future_forecasts, index=future_dates)
+# Step 6: Save Future Forecasts
+forecast_df = pd.DataFrame(future_forecasts)
 forecast_df.to_csv('forecasted_values.csv')
 print("Forecasted values saved to 'forecasted_values.csv'")
