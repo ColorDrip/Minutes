@@ -1,200 +1,117 @@
-"""
-rag_on_document.py
+# Step 0: Install required libraries
+# Run in terminal:
+# pip install -q pypdf faiss-cpu sentence-transformers transformers langchain accelerate
 
-Usage:
-    python rag_on_document.py --pdf document.pdf
-    python rag_on_document.py --text doc.txt
-    then type queries interactively.
-
-What it does:
- - Loads text (PDF or TXT)
- - Splits into overlapping chunks
- - Embeds chunks with sentence-transformers (all-MiniLM-L6-v2)
- - Builds a FAISS index
- - Answers queries by retrieving top-k chunks and generating with Flan-T5-small
-"""
-
-import os
-import argparse
-import pdfplumber
-from tqdm import tqdm
-import math
-import faiss
-import pickle
+# Step 1: Import libraries
+from langchain.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import FAISS
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 import torch
 
-from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-
-# ---------- Config ----------
-EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"  # compact and fast
-GEN_MODEL = "google/flan-t5-small"                       # small generator; CPU friendly
-CHUNK_SIZE = 600       # characters per chunk (tune)
-CHUNK_OVERLAP = 120    # overlap between chunks
-TOP_K = 4              # retrieved docs to pass to generator
-INDEX_PATH = "faiss_index.pkl"  # saves index + metadata
-EMB_CACHE = "embeddings.pkl"
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-# ----------------------------
-
-def load_pdf_text(pdf_path):
-    texts = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for page in pdf.pages:
-            txt = page.extract_text()
-            if txt:
-                texts.append(txt)
-    return "\n\n".join(texts)
-
-def load_text_file(txt_path):
-    with open(txt_path, "r", encoding="utf-8") as f:
-        return f.read()
-
-def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
-    """
-    Split text into overlapping chunks by characters.
-    Returns list of (chunk_text, chunk_id)
-    """
-    chunks = []
-    start = 0
-    doc_len = len(text)
-    idx = 0
-    while start < doc_len:
-        end = min(start + chunk_size, doc_len)
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append((chunk, idx))
-            idx += 1
-        if end == doc_len:
-            break
-        start = max(0, end - overlap)
+# Step 2: PDF Processing
+def process_pdf(pdf_path):
+    """Extract text from PDF and split into chunks"""
+    loader = PyPDFLoader(pdf_path)
+    pages = loader.load()
+    
+    # Configure text splitter
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=500,
+        chunk_overlap=50,
+        length_function=len,
+        separators=["\n\n", "\n", ". ", "! ", "? ", "; ", ", ", " "]
+    )
+    
+    # Split documents into chunks
+    chunks = text_splitter.split_documents(pages)
+    print(f"Created {len(chunks)} chunks from {len(pages)} pages")
     return chunks
 
-def build_or_load_index(chunks, embedder, rebuild=False):
+# Step 3: Create Vector Database
+def create_vector_db(chunks, db_name="pdf_vector_index"):
+    """Generate embeddings and store in FAISS vector database"""
+    # Use efficient small embedding model
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2"
+    )
+    
+    # Create vector store
+    vector_db = FAISS.from_documents(chunks, embeddings)
+    
+    # Save locally for future use
+    vector_db.save_local(db_name)
+    print(f"Vector database saved as '{db_name}'")
+    return vector_db, embeddings
+
+# Step 4: Load Question Answering Model
+def load_qa_model():
+    """Initialize small LLM for question answering"""
+    model_name = "google/flan-t5-small"  # Efficient 80M parameter model
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    
+    # Create text generation pipeline
+    qa_pipeline = pipeline(
+        "text2text-generation",
+        model=model,
+        tokenizer=tokenizer,
+        max_length=200,
+        device=0 if torch.cuda.is_available() else -1  # Use GPU if available
+    )
+    return qa_pipeline
+
+# Step 5: Answer Questions from PDF
+def answer_from_pdf(question, vector_db, embeddings, qa_pipeline, k=3):
+    """Retrieve relevant context and generate answer"""
+    # Load vector database if needed
+    if isinstance(vector_db, str):
+        vector_db = FAISS.load_local(vector_db, embeddings)
+    
+    # Find most relevant chunks
+    relevant_docs = vector_db.similarity_search(question, k=k)
+    context = "\n".join([doc.page_content for doc in relevant_docs])
+    
+    # Construct optimized prompt
+    prompt = f"""
+    Answer the question using ONLY the context below.
+    If you don't know the answer, say "I couldn't find relevant information".
+    
+    Context:
+    {context}
+    
+    Question: {question}
+    Answer:
     """
-    Build FAISS index from chunks. If a cached index exists and rebuild=False, load it.
-    Saves index and metadata as pickle.
-    """
-    if os.path.exists(INDEX_PATH) and os.path.exists(EMB_CACHE) and not rebuild:
-        print("Loading FAISS index and metadata from disk...")
-        with open(INDEX_PATH, "rb") as f:
-            index_data = pickle.load(f)
-        with open(EMB_CACHE, "rb") as f:
-            metadata = pickle.load(f)
-        return index_data["index"], index_data["ids"], metadata
+    
+    # Generate answer
+    result = qa_pipeline(prompt)
+    return result[0]['generated_text'].strip()
 
-    print("Computing embeddings and building FAISS index...")
-    texts = [c[0] for c in chunks]
-    ids = [c[1] for c in chunks]
-    batch_size = 64
-    embeddings = []
-    for i in tqdm(range(0, len(texts), batch_size)):
-        batch = texts[i: i + batch_size]
-        emb = embedder.encode(batch, convert_to_numpy=True, show_progress_bar=False)
-        embeddings.append(emb)
-    import numpy as np
-    embeddings = np.vstack(embeddings).astype("float32")
-
-    dim = embeddings.shape[1]
-    index = faiss.IndexFlatIP(dim)  # inner product (we will normalize)
-    # normalize vectors for cosine similarity using inner product
-    faiss.normalize_L2(embeddings)
-    index.add(embeddings)
-
-    # metadata: store chunks text by index position
-    metadata = {"texts": texts, "ids": ids}
-
-    with open(INDEX_PATH, "wb") as f:
-        pickle.dump({"index": index, "ids": ids}, f)
-    with open(EMB_CACHE, "wb") as f:
-        pickle.dump(metadata, f)
-
-    return index, ids, metadata
-
-def retrieve(query, embedder, index, metadata, top_k=TOP_K):
-    import numpy as np
-    q_emb = embedder.encode([query], convert_to_numpy=True)
-    q_emb = q_emb.astype("float32")
-    faiss.normalize_L2(q_emb)
-    D, I = index.search(q_emb, top_k)  # I: indices of nearest neighbors
-    results = []
-    for idx in I[0]:
-        if idx < len(metadata["texts"]):
-            results.append(metadata["texts"][idx])
-    return results
-
-def make_prompt(question, contexts):
-    """
-    Create a prompt by concatenating the retrieved contexts and question.
-    Keep prompt concise and structured.
-    """
-    prompt = "Use the following extracted parts of a document to answer the question. If the answer is not in the text, say 'I don't know from the document.'\n\n"
-    for i, ctx in enumerate(contexts):
-        prompt += f"Document part {i+1}:\n{ctx}\n\n"
-    prompt += f"Question: {question}\nAnswer:"
-    return prompt
-
-def generate_answer(generator_tokenizer, generator_model, prompt, max_new_tokens=256, device=DEVICE):
-    inputs = generator_tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024).to(device)
-    output_ids = generator_model.generate(**inputs,
-                                          max_new_tokens=max_new_tokens,
-                                          do_sample=False,  # deterministic
-                                          num_beams=4,
-                                          early_stopping=True)
-    out = generator_tokenizer.decode(output_ids[0], skip_special_tokens=True)
-    # The model echoes the prompt; we want only the model's answer — usually after "Answer:" so attempt to split
-    if "Answer:" in out:
-        return out.split("Answer:", 1)[1].strip()
-    return out.strip()
-
-def main(args):
-    if args.pdf:
-        text = load_pdf_text(args.pdf)
-    elif args.text:
-        text = load_text_file(args.text)
-    else:
-        raise ValueError("No input file provided. Use --pdf or --text")
-
-    print(f"Document length (chars): {len(text)}")
-    chunks = chunk_text(text, chunk_size=args.chunk_size, overlap=args.chunk_overlap)
-    print(f"Created {len(chunks)} chunks (chunk_size={args.chunk_size}, overlap={args.chunk_overlap})")
-
-    # load embedder
-    print("Loading embedder model:", EMBED_MODEL)
-    embedder = SentenceTransformer(EMBED_MODEL, device=DEVICE)
-
-    # build or load index
-    index, ids, metadata = build_or_load_index(chunks, embedder, rebuild=args.rebuild_index)
-
-    # load generator
-    print("Loading generator model:", GEN_MODEL)
-    tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL)
-    gen_model = AutoModelForSeq2SeqLM.from_pretrained(GEN_MODEL).to(DEVICE)
-
-    # interactive loop
-    print("\nReady! Type your question (or 'exit'):")
-    while True:
-        q = input("\n> ").strip()
-        if q.lower() in ("exit", "quit"):
-            print("Goodbye.")
-            break
-        # retrieve
-        contexts = retrieve(q, embedder, index, metadata, top_k=args.top_k)
-        # build prompt
-        prompt = make_prompt(q, contexts)
-        # generate
-        answer = generate_answer(tokenizer, gen_model, prompt, max_new_tokens=args.max_tokens)
-        print("\n--- Answer ---")
-        print(answer)
-
+# Step 6: Main Execution Flow
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--pdf", type=str, help="Path to PDF file")
-    parser.add_argument("--text", type=str, help="Path to plain text file")
-    parser.add_argument("--chunk_size", type=int, default=CHUNK_SIZE)
-    parser.add_argument("--chunk_overlap", type=int, default=CHUNK_OVERLAP)
-    parser.add_argument("--top_k", type=int, default=TOP_K)
-    parser.add_argument("--rebuild_index", action="store_true", help="Force rebuild of index")
-    parser.add_argument("--max_tokens", type=int, default=256, help="Max tokens to generate")
-    args = parser.parse_args()
-    main(args)
+    # Configuration
+    PDF_PATH = "your_document.pdf"  # <-- Replace with your PDF path
+    DB_NAME = "pdf_qa_index"
+    
+    # Run pipeline
+    print("Processing PDF...")
+    chunks = process_pdf(PDF_PATH)
+    
+    print("\nCreating vector database...")
+    vector_db, embeddings = create_vector_db(chunks, DB_NAME)
+    
+    print("\nLoading QA model...")
+    qa_model = load_qa_model()
+    
+    # Interactive Q&A loop
+    print("\nReady for questions! (type 'exit' to quit)")
+    while True:
+        query = input("\nYour question: ")
+        if query.lower() == 'exit':
+            break
+            
+        answer = answer_from_pdf(query, vector_db, embeddings, qa_model)
+        print(f"\nAnswer: {answer}")
