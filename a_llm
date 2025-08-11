@@ -1,22 +1,21 @@
-# Step 0: Install required libraries
+# Step 0: Install required libraries (update langchain)
 # Run in terminal:
-# pip install -q pypdf faiss-cpu sentence-transformers transformers langchain accelerate
+# pip install -q --upgrade langchain langchain-community pypdf faiss-cpu sentence-transformers transformers accelerate
 
-# Step 1: Import libraries
-from langchain.document_loaders import PyPDFLoader
+# Step 1: Import libraries (corrected imports)
+from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 import torch
 
-# Step 2: PDF Processing
+# Step 2: PDF Processing (unchanged)
 def process_pdf(pdf_path):
     """Extract text from PDF and split into chunks"""
     loader = PyPDFLoader(pdf_path)
     pages = loader.load()
     
-    # Configure text splitter
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=500,
         chunk_overlap=50,
@@ -24,57 +23,44 @@ def process_pdf(pdf_path):
         separators=["\n\n", "\n", ". ", "! ", "? ", "; ", ", ", " "]
     )
     
-    # Split documents into chunks
     chunks = text_splitter.split_documents(pages)
     print(f"Created {len(chunks)} chunks from {len(pages)} pages")
     return chunks
 
-# Step 3: Create Vector Database
+# Step 3: Create Vector Database (unchanged)
 def create_vector_db(chunks, db_name="pdf_vector_index"):
-    """Generate embeddings and store in FAISS vector database"""
-    # Use efficient small embedding model
     embeddings = HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
     
-    # Create vector store
     vector_db = FAISS.from_documents(chunks, embeddings)
-    
-    # Save locally for future use
     vector_db.save_local(db_name)
     print(f"Vector database saved as '{db_name}'")
     return vector_db, embeddings
 
-# Step 4: Load Question Answering Model
+# Step 4: Load QA Model (unchanged)
 def load_qa_model():
-    """Initialize small LLM for question answering"""
-    model_name = "google/flan-t5-small"  # Efficient 80M parameter model
-    
+    model_name = "google/flan-t5-small"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     
-    # Create text generation pipeline
     qa_pipeline = pipeline(
         "text2text-generation",
         model=model,
         tokenizer=tokenizer,
         max_length=200,
-        device=0 if torch.cuda.is_available() else -1  # Use GPU if available
+        device=0 if torch.cuda.is_available() else -1
     )
     return qa_pipeline
 
-# Step 5: Answer Questions from PDF
+# Step 5: Answer Questions (unchanged)
 def answer_from_pdf(question, vector_db, embeddings, qa_pipeline, k=3):
-    """Retrieve relevant context and generate answer"""
-    # Load vector database if needed
     if isinstance(vector_db, str):
-        vector_db = FAISS.load_local(vector_db, embeddings)
+        vector_db = FAISS.load_local(vector_db, embeddings, allow_dangerous_deserialization=True)
     
-    # Find most relevant chunks
     relevant_docs = vector_db.similarity_search(question, k=k)
     context = "\n".join([doc.page_content for doc in relevant_docs])
     
-    # Construct optimized prompt
     prompt = f"""
     Answer the question using ONLY the context below.
     If you don't know the answer, say "I couldn't find relevant information".
@@ -86,17 +72,14 @@ def answer_from_pdf(question, vector_db, embeddings, qa_pipeline, k=3):
     Answer:
     """
     
-    # Generate answer
     result = qa_pipeline(prompt)
     return result[0]['generated_text'].strip()
 
-# Step 6: Main Execution Flow
+# Step 6: Main Execution (with FAISS security fix)
 if __name__ == "__main__":
-    # Configuration
-    PDF_PATH = "your_document.pdf"  # <-- Replace with your PDF path
+    PDF_PATH = "your_document.pdf"
     DB_NAME = "pdf_qa_index"
     
-    # Run pipeline
     print("Processing PDF...")
     chunks = process_pdf(PDF_PATH)
     
@@ -106,7 +89,14 @@ if __name__ == "__main__":
     print("\nLoading QA model...")
     qa_model = load_qa_model()
     
-    # Interactive Q&A loop
+    # IMPORTANT: New FAISS security requirement
+    print("\nLoading vector store with security override...")
+    vector_db = FAISS.load_local(
+        DB_NAME, 
+        embeddings, 
+        allow_dangerous_deserialization=True
+    )
+    
     print("\nReady for questions! (type 'exit' to quit)")
     while True:
         query = input("\nYour question: ")
