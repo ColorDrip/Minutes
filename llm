@@ -1,0 +1,48 @@
+from transformers import pipeline
+
+# Load a small pre-trained QA model
+model_name = "distilbert-base-cased-distilled-squad"
+qa_pipeline = pipeline("question-answering", model=model_name)
+
+# Your story/stories (plug them here directly or load from file)
+stories = """
+Story 1: The Brave Little Rabbit
+Once upon a time, in a forest, there lived a small rabbit named Ruby. Ruby was known for her courage despite her tiny size. One day, a fox threatened the forest animals, scaring them into hiding. Ruby decided to confront the fox. She tricked him by leading him to a beehive, where the bees chased the fox away. The animals cheered for Ruby, and she became their hero.
+
+Story 2: The Lost Kitten
+In a small village, a kitten named Mitten got lost during a storm. A kind boy named Sam found Mitten shivering under a tree. He took her home, gave her warm milk, and made a cozy bed. The next day, Sam found Mitten's owner, an old lady who was overjoyed. She thanked Sam with homemade cookies.
+"""
+# Optionally, load from a file instead:
+# with open("stories.txt", "r", encoding="utf-8") as f:
+#     stories = f.read()
+
+# Function to answer questions with chunking for long stories
+def answer_question(question, context, max_length=512):
+    # If the context is too long, split into chunks
+    if len(context.split()) > max_length:
+        words = context.split()
+        chunks = [' '.join(words[i:i + max_length]) for i in range(0, len(words), max_length - 50)]  # Overlap by 50 words
+        best_answer = None
+        best_score = -float('inf')
+        for chunk in chunks:
+            result = qa_pipeline(question=question, context=chunk)
+            if result['score'] > best_score:
+                best_score = result['score']
+                best_answer = result['answer']
+        return best_answer if best_answer else "No answer found."
+    else:
+        result = qa_pipeline(question=question, context=context)
+        return result['answer']
+
+# Main interactive loop
+def main():
+    print("Stories loaded. Ask questions about them (type 'exit' to quit).")
+    while True:
+        question = input("Your question: ")
+        if question.lower() == 'exit':
+            break
+        answer = answer_question(question, stories)
+        print(f"Answer: {answer}\n")
+
+if __name__ == "__main__":
+    main()
