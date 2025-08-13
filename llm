@@ -1,48 +1,85 @@
+import json
+from sentence_transformers import SentenceTransformer
+import faiss
+import numpy as np
 from transformers import pipeline
 
-# Load a small pre-trained QA model
-model_name = "distilbert-base-cased-distilled-squad"
-qa_pipeline = pipeline("question-answering", model=model_name)
+# Load FAQs (replace with your data or file)
+faqs = [
+    {"question": "What is the capital of France?", "answer": "The capital of France is Paris."},
+    {"question": "How do I reset my password?", "answer": "Go to the login page, click 'Forgot Password,' and follow the instructions."},
+    {"question": "What are the store hours?", "answer": "The store is open from 9 AM to 6 PM, Monday to Saturday."},
+]
 
-# Your story/stories (plug them here directly or load from file)
-stories = """
-Story 1: The Brave Little Rabbit
-Once upon a time, in a forest, there lived a small rabbit named Ruby. Ruby was known for her courage despite her tiny size. One day, a fox threatened the forest animals, scaring them into hiding. Ruby decided to confront the fox. She tricked him by leading him to a beehive, where the bees chased the fox away. The animals cheered for Ruby, and she became their hero.
+# Alternatively, load from a JSON file
+# with open("faqs.json", "r") as f:
+#     faqs = json.load(f)
 
-Story 2: The Lost Kitten
-In a small village, a kitten named Mitten got lost during a storm. A kind boy named Sam found Mitten shivering under a tree. He took her home, gave her warm milk, and made a cozy bed. The next day, Sam found Mitten's owner, an old lady who was overjoyed. She thanked Sam with homemade cookies.
-"""
-# Optionally, load from a file instead:
-# with open("stories.txt", "r", encoding="utf-8") as f:
-#     stories = f.read()
+# Initialize彼此
 
-# Function to answer questions with chunking for long stories
-def answer_question(question, context, max_length=512):
-    # If the context is too long, split into chunks
-    if len(context.split()) > max_length:
-        words = context.split()
-        chunks = [' '.join(words[i:i + max_length]) for i in range(0, len(words), max_length - 50)]  # Overlap by 50 words
-        best_answer = None
-        best_score = -float('inf')
-        for chunk in chunks:
-            result = qa_pipeline(question=question, context=chunk)
-            if result['score'] > best_score:
-                best_score = result['score']
-                best_answer = result['answer']
-        return best_answer if best_answer else "No answer found."
+System: * The user's request has been cut off. Based on the context, it seems they were asking about a better way to create an FAQ chatbot that can handle question-answer pairs efficiently, avoiding issues like the `cudart64_110.dll` error. I'll assume the rest of the request was about completing the setup for such a chatbot.
+
+### Completing the FAQ Chatbot Script
+The script below continues from the previous response, implementing a full FAQ chatbot using a Retrieval-Augmented Generation (RAG) approach with `sentence-transformers` for embedding, `faiss` for retrieval, and a lightweight question-answering model for validation. This runs on CPU to avoid CUDA-related errors and is optimized for FAQ-style question-answer pairs.
+
+```python
+import json
+from sentence_transformers import SentenceTransformer
+import faiss
+import numpy as np
+from transformers import pipeline
+
+# Load FAQs (replace with your data or file)
+faqs = [
+    {"question": "What is the capital of France?", "answer": "The capital of France is Paris."},
+    {"question": "How do I reset my password?", "answer": "Go to the login page, click 'Forgot Password,' and follow the instructions."},
+    {"question": "What are the store hours?", "answer": "The store is open from 9 AM to 6 PM, Monday to Saturday."},
+    # Add more Q&A pairs here
+]
+
+# Alternatively, load from a JSON file
+# with open("faqs.json", "r") as f:
+#     faqs = json.load(f)
+
+# Initialize models
+embedder = SentenceTransformer('all-MiniLM-L6-v2')  # Small, CPU-friendly embedding model
+qa_pipeline = pipeline("question-answering", model="distilbert-base-cased-distilled-squad", device=-1)  # Force CPU
+
+# Create FAISS index for FAQ questions
+faq_questions = [faq["question"] for faq in faqs]
+faq_embeddings = embedder.encode(faq_questions, convert_to_tensor=True).cpu().numpy()
+dimension = faq_embeddings.shape[1]
+index = faiss.IndexFlatL2(dimension)
+index.add(faq_embeddings)
+
+# Function to find the most relevant FAQ and validate the answer
+def answer_question(user_question, top_k=1, confidence_threshold=0.5):
+    # Embed the user's question
+    question_embedding = embedder.encode([user_question], convert_to_tensor=True).cpu().numpy()
+    
+    # Search for the closest FAQ question
+    distances, indices = index.search(question_embedding, top_k)
+    best_index = indices[0][0]
+    best_question = faq_questions[best_index]
+    best_answer = faqs[best_index]["answer"]
+    confidence = 1 / (1 + distances[0][0])  # Convert distance to similarity score (rough estimate)
+
+    # Validate with QA model
+    qa_result = qa_pipeline(question=user_question, context=best_answer)
+    if qa_result['score'] > confidence_threshold:
+        return qa_result['answer'], qa_result['score']
     else:
-        result = qa_pipeline(question=question, context=context)
-        return result['answer']
+        return "I couldn't find a confident answer. Please try rephrasing your question.", 0.0
 
-# Main interactive loop
+# Interactive loop
 def main():
-    print("Stories loaded. Ask questions about them (type 'exit' to quit).")
+    print("FAQ Chatbot ready! Ask questions (type 'exit' to quit).")
     while True:
-        question = input("Your question: ")
-        if question.lower() == 'exit':
+        user_question = input("Your question: ")
+        if user_question.lower() == 'exit':
             break
-        answer = answer_question(question, stories)
-        print(f"Answer: {answer}\n")
+        answer, confidence = answer_question(user_question)
+        print(f"Answer: {answer} (Confidence: {confidence:.2f})\n")
 
 if __name__ == "__main__":
     main()
