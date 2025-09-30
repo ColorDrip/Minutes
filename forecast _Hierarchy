@@ -1,34 +1,47 @@
 import pandas as pd
 from prophet import Prophet
 
-# Load your dataset
+# Load dataset
 df = pd.read_csv("your_data.csv")
 
-# Ensure Date is datetime
-df['Date'] = pd.to_datetime(df['Date'])
+# ---- STEP 1: Clean & Standardize Date ----
+# Convert to datetime (coerce errors = force bad formats to NaT)
+df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
 
-# Forecast horizon
-future_months = 12
+# Drop rows where date couldn't be parsed
+df = df.dropna(subset=['Date'])
 
-# Store results
-all_forecasts = []
+# Ensure monthly frequency (set all dates to first of month)
+df['Date'] = df['Date'].dt.to_period('M').dt.to_timestamp()
 
-# Loop by group
+# ---- STEP 2: Forecast Setup ----
+future_months = 12  # forecast horizon
 group_cols = ["Country", "FunctionGroup", "SubGroup", "Group3", "JointFamily"]
 
+all_forecasts = []
+
+# ---- STEP 3: Forecast Per Group ----
 for keys, group_df in df.groupby(group_cols):
-    # Prepare for Prophet
+    # Prepare data for Prophet
     ts = group_df[['Date', 'Cost']].rename(columns={'Date': 'ds', 'Cost': 'y'})
-    
+
+    if len(ts) < 6:  # skip groups with too few data points
+        continue
+
     model = Prophet()
     model.fit(ts)
-    
+
+    # Create future dates
     future = model.make_future_dataframe(periods=future_months, freq='M')
     forecast = model.predict(future)
-    
+
+    # Add back group keys
     forecast['Country'], forecast['FunctionGroup'], forecast['SubGroup'], forecast['Group3'], forecast['JointFamily'] = keys
+
     all_forecasts.append(forecast)
 
-# Combine all forecasts
-result = pd.concat(all_forecasts)
+# ---- STEP 4: Save Results ----
+result = pd.concat(all_forecasts, ignore_index=True)
 result.to_csv("forecast_results.csv", index=False)
+
+print("✅ Forecasting complete! Results saved to forecast_results.csv")
