@@ -1,62 +1,9 @@
 from office365.sharepoint.client_context import ClientContext
-from office365.runtime.auth.authentication_context import AuthenticationContext
+from office365.runtime.auth.user_credential import UserCredential
 
-def connect_sharepoint(site_url, username, password):
-    try:
-        auth_ctx = AuthenticationContext(site_url)
-        
-        # Check if authentication actually succeeds
-        is_authenticated = auth_ctx.acquire_token_for_user(username, password)
-        
-        if not is_authenticated:
-            print("❌ Authentication failed - check credentials")
-            return None
-            
-        print("✅ Authentication successful")
-        ctx = ClientContext(site_url, auth_ctx)
-        return ctx
-        
-    except Exception as e:
-        print(f"❌ Authentication error: {e}")
-        return None
-
-def test_connection(ctx):
-    try:
-        if ctx is None:
-            print("❌ No valid context provided")
-            return False
-            
-        web = ctx.web
-        ctx.load(web)
-        ctx.execute_query()
-        print(f"✅ Connected to: {web.properties['Title']}")
-        return True
-        
-    except Exception as e:
-        print(f"❌ Connection test failed: {e}")
-        return False
-
-# Usage
-site_url = "https://yourtenant.sharepoint.com/sites/yoursite"
-username = "your-email@yourtenant.com"
-password = "your-password"
-
-# Step 1: Authenticate
-ctx = connect_sharepoint(site_url, username, password)
-
-# Step 2: Test connection
-if ctx and test_connection(ctx):
-    # Step 3: Fetch data
-    try:
-        list_title = "YourListName"
-        sp_list = ctx.web.lists.get_by_title(list_title)
-        items = sp_list.items.get().execute_query()
-        
-        print(f"✅ Found {len(items)} items")
-        for item in items:
-            print(f"Item: {item.properties}")
-            
-    except Exception as e:
-        print(f"❌ Error fetching data: {e}")
-else:
-    print("❌ Cannot proceed without valid connection")
+ctx = ClientContext("https://yourtenant.sharepoint.com/sites/IntranetSite").with_credentials(
+    UserCredential("automation_user@domain.com", "your_password")
+)
+items = ctx.web.lists.get_by_title("Announcements").items.get().execute_query()
+for item in items:
+    print(item.properties["Title"])
