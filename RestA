@@ -1,0 +1,20 @@
+from office365.sharepoint.client_context import ClientContext
+from office365.runtime.auth.user_credential import UserCredential
+
+# SharePoint site and credentials
+site_url = "https://yourtenant.sharepoint.com/sites/YourSiteName"
+ctx = ClientContext(site_url).with_credentials(
+    UserCredential("your.email@domain.com", "your_password")
+)
+
+# Get the target list
+list_obj = ctx.web.lists.get_by_title("YourListName")
+
+# Get the specific item (by ID)
+item = list_obj.get_item_by_id(5)
+item.set_property("Title", "Updated Title from Python")
+item.set_property("Status", "Completed")  # Example custom column
+item.update()
+ctx.execute_query()
+
+print("✅ Item updated successfully!")
