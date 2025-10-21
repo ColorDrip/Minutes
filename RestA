@@ -1,66 +1,45 @@
-from flask import Flask, request, jsonify, render_template_string
-import sqlite3
+import pyodbc
 
-app = Flask(__name__)
+# --- Path to your MS Access database ---
+# Make sure this path is accessible by all users if shared
+db_file = r"C:\SharedDB\TeamData.accdb"
 
-# --- Create a simple table if not exists ---
-def init_db():
-    conn = sqlite3.connect("data.db")
-    cur = conn.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS records (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT,
-        status TEXT
-    )
-    """)
+# --- Connection string for Access ---
+conn_str = (
+    r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};"
+    f"DBQ={db_file};"
+)
+
+# --- Connect to the database ---
+conn = pyodbc.connect(conn_str)
+cursor = conn.cursor()
+
+# ---------------------------
+# 1️⃣ Insert a new record
+# ---------------------------
+def insert_record(name, department, hours):
+    cursor.execute("""
+        INSERT INTO Employees (Name, Department, HoursWorked)
+        VALUES (?, ?, ?)
+    """, (name, department, hours))
     conn.commit()
-    conn.close()
+    print(f"Inserted record: {name}, {department}, {hours}")
 
-init_db()
-
-# --- Simple HTML form ---
-HTML_FORM = """
-<h2>Update Records</h2>
-<form action="/save" method="post">
-  Name: <input type="text" name="name"><br><br>
-  Status: <input type="text" name="status"><br><br>
-  <input type="submit" value="Save Record">
-</form>
-<br>
-<a href="/view">View All Records</a>
-"""
-
-@app.route('/')
-def index():
-    return HTML_FORM
-
-@app.route('/save', methods=['POST'])
-def save():
-    name = request.form['name']
-    status = request.form['status']
-
-    conn = sqlite3.connect("data.db")
-    cur = conn.cursor()
-    cur.execute("INSERT INTO records (name, status) VALUES (?, ?)", (name, status))
+# ---------------------------
+# 2️⃣ Update an existing record
+# ---------------------------
+def update_record(name, new_hours):
+    cursor.execute("""
+        UPDATE Employees
+        SET HoursWorked = ?
+        WHERE Name = ?
+    """, (new_hours, name))
     conn.commit()
-    conn.close()
+    print(f"Updated {name} to HoursWorked={new_hours}")
 
-    return "✅ Record saved successfully!<br><a href='/'>Back</a>"
-
-@app.route('/view')
-def view():
-    conn = sqlite3.connect("data.db")
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM records")
-    rows = cur.fetchall()
-    conn.close()
-
-    html = "<h2>All Records</h2><ul>"
-    for r in rows:
-        html += f"<li>{r[0]} - {r[1]} - {r[2]}</li>"
-    html += "</ul><a href='/'>Back</a>"
-    return html
-
-if __name__ == "__main__":
-    app.run(debug=True)
+# ---------------------------
+# 3️⃣ Fetch all records
+# ---------------------------
+def fetch_records():
+    cursor.execute("SELECT * FROM Employees")
+    rows =
