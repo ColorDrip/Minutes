@@ -1,21 +1,36 @@
+import socket
 from office365.sharepoint.client_context import ClientContext
 from office365.runtime.auth.authentication_context import AuthenticationContext
 
-# SharePoint site details
-site_url = "https://yourtenant.sharepoint.com/sites/yoursite"
-username = "your-email@yourtenant.com"
-password = "your-password"
+# Test basic connectivity first
+def test_connectivity(hostname):
+    try:
+        # Test DNS resolution
+        ip = socket.gethostbyname('yourtenant.sharepoint.com')
+        print(f"Resolved IP: {ip}")
+        return True
+    except socket.gaierror as e:
+        print(f"DNS resolution failed: {e}")
+        return False
 
-# Authenticate
-auth_ctx = AuthenticationContext(site_url)
-auth_ctx.acquire_token_for_user(username, password)
-ctx = ClientContext(site_url, auth_ctx)
+# Fix socket configuration
+socket.setdefaulttimeout(60)  # Increase timeout
 
-# Fetch data from a list
-list_title = "YourListName"
-sp_list = ctx.web.lists.get_by_title(list_title)
-items = sp_list.items.get().execute_query()
-
-# Print all items
-for item in items:
-    print(f"ID: {item.id}, Title: {item.properties.get('Title')}")
+# Your SharePoint code with error handling
+try:
+    site_url = "https://yourtenant.sharepoint.com/sites/yoursite"
+    username = "your-email@yourtenant.com"
+    password = "your-password"
+    
+    auth_ctx = AuthenticationContext(site_url)
+    if auth_ctx.acquire_token_for_user(username, password):
+        ctx = ClientContext(site_url, auth_ctx)
+        
+        # Test with a simple request first
+        web = ctx.web
+        ctx.load(web)
+        ctx.execute_query()
+        print(f"Connected to: {web.properties['Title']}")
+        
+except Exception as e:
+    print(f"Connection error: {e}")
