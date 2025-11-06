@@ -3,80 +3,84 @@ import pyodbc
 
 app = Flask(__name__)
 
-# Function to connect to MS Access database
+# --- DB Connection ---
 def get_db_connection():
     conn_str = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=C:\path\to\yourdb.accdb;'
     return pyodbc.connect(conn_str)
 
-# Home route – show the scorecard
+# --- Home Page ---
 @app.route('/')
 def index():
     return render_template('scorecard.html')
 
-# Submit route – save ratings to Access DB
+# --- Submit Form ---
 @app.route('/submit', methods=['POST'])
 def submit():
-    data = request.form
-    name = data.get('username')
-    parameters = ['Quality', 'Efficiency', 'Innovation', 'Communication', 'Teamwork']
+    username = request.form.get('username')
+    parameter = request.form.get('parameter')
+    rating = request.form.get('rating')
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    for param in parameters:
-        rating = data.get(param)
+
+    # Optional: check if record already exists for this user + parameter
+    cursor.execute("""
+        SELECT COUNT(*) FROM tblRatings WHERE UserName=? AND ParameterName=?
+    """, (username, parameter))
+    exists = cursor.fetchone()[0]
+
+    if exists:
+        # Update existing rating
+        cursor.execute("""
+            UPDATE tblRatings 
+            SET RatingValue=? 
+            WHERE UserName=? AND ParameterName=?
+        """, (rating, username, parameter))
+    else:
+        # Insert new rating
         cursor.execute("""
             INSERT INTO tblRatings (UserName, ParameterName, RatingValue)
             VALUES (?, ?, ?)
-        """, (name, param, rating))
+        """, (username, parameter, rating))
+
     conn.commit()
     conn.close()
-
-    return "✅ Ratings saved successfully!"
+    return "✅ Rating saved or updated successfully!"
 
 if __name__ == '__main__':
     app.run(debug=True)
 
 
-
-
-
-
-†**†****
+,.........
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Performance Scorecard</title>
+    <title>Single Rating Scorecard</title>
     <style>
         body {
             font-family: Arial, sans-serif;
+            background: #f9fafb;
             margin: 40px;
-            background-color: #f8f9fa;
-        }
-        h2 {
-            text-align: center;
         }
         form {
             background: white;
             padding: 20px;
-            border-radius: 12px;
-            max-width: 500px;
+            border-radius: 10px;
+            max-width: 400px;
             margin: auto;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-        label {
-            display: block;
-            margin-top: 15px;
-            font-weight: bold;
-        }
+        h2 { text-align: center; }
+        label { display: block; margin-top: 15px; font-weight: bold; }
         select, input[type="text"] {
             width: 100%;
             padding: 8px;
-            margin-top: 5px;
-            border: 1px solid #ccc;
             border-radius: 6px;
+            border: 1px solid #ccc;
+            margin-top: 5px;
         }
         button {
             margin-top: 20px;
@@ -88,19 +92,26 @@ if __name__ == '__main__':
             border-radius: 6px;
             cursor: pointer;
         }
-        button:hover {
-            background: #0056b3;
-        }
+        button:hover { background: #0056b3; }
     </style>
 </head>
 <body>
-    <h2>Team Member Scorecard</h2>
+    <h2>Rate a Parameter</h2>
     <form action="/submit" method="POST">
-        <label for="username">Name:</label>
+        <label for="username">User Name:</label>
         <input type="text" name="username" required>
 
-        <label>Quality:</label>
-        <select name="Quality">
+        <label for="parameter">Parameter:</label>
+        <select name="parameter" required>
+            <option value="Quality">Quality</option>
+            <option value="Efficiency">Efficiency</option>
+            <option value="Innovation">Innovation</option>
+            <option value="Communication">Communication</option>
+            <option value="Teamwork">Teamwork</option>
+        </select>
+
+        <label for="rating">Rating:</label>
+        <select name="rating" required>
             <option value="1">1 - Poor</option>
             <option value="2">2 - Fair</option>
             <option value="3">3 - Good</option>
@@ -108,43 +119,7 @@ if __name__ == '__main__':
             <option value="5">5 - Excellent</option>
         </select>
 
-        <label>Efficiency:</label>
-        <select name="Efficiency">
-            <option value="1">1 - Poor</option>
-            <option value="2">2 - Fair</option>
-            <option value="3">3 - Good</option>
-            <option value="4">4 - Very Good</option>
-            <option value="5">5 - Excellent</option>
-        </select>
-
-        <label>Innovation:</label>
-        <select name="Innovation">
-            <option value="1">1 - Poor</option>
-            <option value="2">2 - Fair</option>
-            <option value="3">3 - Good</option>
-            <option value="4">4 - Very Good</option>
-            <option value="5">5 - Excellent</option>
-        </select>
-
-        <label>Communication:</label>
-        <select name="Communication">
-            <option value="1">1 - Poor</option>
-            <option value="2">2 - Fair</option>
-            <option value="3">3 - Good</option>
-            <option value="4">4 - Very Good</option>
-            <option value="5">5 - Excellent</option>
-        </select>
-
-        <label>Teamwork:</label>
-        <select name="Teamwork">
-            <option value="1">1 - Poor</option>
-            <option value="2">2 - Fair</option>
-            <option value="3">3 - Good</option>
-            <option value="4">4 - Very Good</option>
-            <option value="5">5 - Excellent</option>
-        </select>
-
-        <button type="submit">Submit Ratings</button>
+        <button type="submit">Submit</button>
     </form>
 </body>
 </html>
