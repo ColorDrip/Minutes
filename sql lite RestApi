@@ -3,30 +3,17 @@ import sqlite3
 
 app = Flask(__name__)
 
-# Path to SQLite database (you can move this to a shared folder later)
 db_path = r"data.db"
 
-# Initialize database
-def init_db():
-    conn = sqlite3.connect(db_path)
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS ratings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            rating INTEGER NOT NULL
-        )
-    ''')
-    conn.commit()
-    conn.close()
+def get_connection():
+    return sqlite3.connect(db_path, check_same_thread=False)
 
-init_db()
-
-# HTML template
 HTML_PAGE = '''
 <!DOCTYPE html>
 <html>
 <head>
     <title>User Ratings</title>
+    <meta http-equiv="refresh" content="10"> <!-- auto-refresh every 10 seconds -->
     <style>
         body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 40px; text-align: center; }
         h2 { color: #333; }
@@ -78,24 +65,19 @@ def index():
     if request.method == 'POST':
         name = request.form['name']
         rating = int(request.form['rating'])
-
-        # Save to database
-        conn = sqlite3.connect(db_path)
-        conn.execute("INSERT INTO ratings (name, rating) VALUES (?, ?)", (name, rating))
-        conn.commit()
-        conn.close()
-
+        with get_connection() as conn:
+            conn.execute("INSERT INTO ratings (name, rating) VALUES (?, ?)", (name, rating))
+            conn.commit()
         last_name = name
         last_rating = rating
 
-    # Fetch all submitted ratings
-    conn = sqlite3.connect(db_path)
-    cursor = conn.execute("SELECT name, rating FROM ratings ORDER BY id DESC")
-    all_ratings = cursor.fetchall()
-    conn.close()
+    # Always open a new connection for reading
+    with get_connection() as conn:
+        cursor = conn.execute("SELECT name, rating FROM ratings ORDER BY id DESC")
+        all_ratings = cursor.fetchall()
 
     return render_template_string(HTML_PAGE, last_name=last_name, last_rating=last_rating, all_ratings=all_ratings)
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
