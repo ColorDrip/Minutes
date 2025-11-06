@@ -1,0 +1,101 @@
+from flask import Flask, request, render_template_string
+import sqlite3
+
+app = Flask(__name__)
+
+# Path to SQLite database (you can move this to a shared folder later)
+db_path = r"data.db"
+
+# Initialize database
+def init_db():
+    conn = sqlite3.connect(db_path)
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS ratings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            rating INTEGER NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# HTML template
+HTML_PAGE = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Ratings</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 40px; text-align: center; }
+        h2 { color: #333; }
+        form { display: inline-block; background: white; padding: 20px 30px; border-radius: 12px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        input[type=text], input[type=number] { padding: 8px; margin: 8px; border: 1px solid #ccc; border-radius: 5px; width: 150px; }
+        input[type=submit] { background-color: #4CAF50; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
+        input[type=submit]:hover { background-color: #45a049; }
+        table { margin: 20px auto; border-collapse: collapse; width: 50%; background: white; box-shadow: 0 0 8px rgba(0,0,0,0.1); }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        th { background-color: #f2f2f2; }
+        .thanks { margin-top: 20px; color: #333; }
+    </style>
+</head>
+<body>
+
+    <h2>Submit Your Rating</h2>
+    <form method="post" action="/">
+        <input type="text" name="name" placeholder="Enter your name" required>
+        <input type="number" name="rating" min="1" max="5" placeholder="1-5" required>
+        <input type="submit" value="Submit">
+    </form>
+
+    {% if last_name %}
+        <div class="thanks">
+            <h3>Thank you, {{ last_name }}!</h3>
+            <p>You submitted a rating of <strong>{{ last_rating }}</strong>.</p>
+        </div>
+    {% endif %}
+
+    {% if all_ratings %}
+        <h3>All Submitted Ratings</h3>
+        <table>
+            <tr><th>Name</th><th>Rating</th></tr>
+            {% for row in all_ratings %}
+                <tr><td>{{ row[0] }}</td><td>{{ row[1] }}</td></tr>
+            {% endfor %}
+        </table>
+    {% endif %}
+
+</body>
+</html>
+'''
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    last_name = None
+    last_rating = None
+
+    if request.method == 'POST':
+        name = request.form['name']
+        rating = int(request.form['rating'])
+
+        # Save to database
+        conn = sqlite3.connect(db_path)
+        conn.execute("INSERT INTO ratings (name, rating) VALUES (?, ?)", (name, rating))
+        conn.commit()
+        conn.close()
+
+        last_name = name
+        last_rating = rating
+
+    # Fetch all submitted ratings
+    conn = sqlite3.connect(db_path)
+    cursor = conn.execute("SELECT name, rating FROM ratings ORDER BY id DESC")
+    all_ratings = cursor.fetchall()
+    conn.close()
+
+    return render_template_string(HTML_PAGE, last_name=last_name, last_rating=last_rating, all_ratings=all_ratings)
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
