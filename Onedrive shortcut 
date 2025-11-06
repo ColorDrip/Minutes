@@ -1,0 +1,16 @@
+import os
+
+# --- Configuration ---
+onedrive_url = "https://onedrive.live.com/?id=YOUR_FOLDER_ID&cid=YOUR_CID"  # replace with your OneDrive web folder URL
+shortcut_name = "App"  # this will appear on the desktop
+desktop = os.path.join(os.path.expanduser("~"), "Desktop")  # current user's desktop path
+shortcut_path = os.path.join(desktop, f"{shortcut_name}.url")
+
+# --- Create Shortcut File ---
+with open(shortcut_path, "w") as f:
+    f.write("[InternetShortcut]\n")
+    f.write(f"URL={onedrive_url}\n")
+    f.write("IconFile=https://onedrive.live.com/favicon.ico\n")
+    f.write("IconIndex=0\n")
+
+print(f"✅ Shortcut created successfully: {shortcut_path}")
