@@ -1,25 +1,150 @@
-import pyodbc
 from flask import Flask, render_template, request
+import pyodbc
 
 app = Flask(__name__)
 
+# Function to connect to MS Access database
 def get_db_connection():
-    return pyodbc.connect(r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=C:\path\yourdb.accdb;')
+    conn_str = r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=C:\path\to\yourdb.accdb;'
+    return pyodbc.connect(conn_str)
 
+# Home route – show the scorecard
 @app.route('/')
 def index():
     return render_template('scorecard.html')
 
+# Submit route – save ratings to Access DB
 @app.route('/submit', methods=['POST'])
 def submit():
-    ratings = request.form.to_dict()
+    data = request.form
+    name = data.get('username')
+    parameters = ['Quality', 'Efficiency', 'Innovation', 'Communication', 'Teamwork']
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    for param, value in ratings.items():
-        cursor.execute("INSERT INTO tblRatings (ParameterName, RatingValue) VALUES (?, ?)", (param, value))
+    for param in parameters:
+        rating = data.get(param)
+        cursor.execute("""
+            INSERT INTO tblRatings (UserName, ParameterName, RatingValue)
+            VALUES (?, ?, ?)
+        """, (name, param, rating))
     conn.commit()
     conn.close()
-    return "Ratings saved successfully!"
+
+    return "✅ Ratings saved successfully!"
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
+
+
+
+
+†**†****
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Performance Scorecard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f8f9fa;
+        }
+        h2 {
+            text-align: center;
+        }
+        form {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            max-width: 500px;
+            margin: auto;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+        select, input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+        button {
+            margin-top: 20px;
+            width: 100%;
+            padding: 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h2>Team Member Scorecard</h2>
+    <form action="/submit" method="POST">
+        <label for="username">Name:</label>
+        <input type="text" name="username" required>
+
+        <label>Quality:</label>
+        <select name="Quality">
+            <option value="1">1 - Poor</option>
+            <option value="2">2 - Fair</option>
+            <option value="3">3 - Good</option>
+            <option value="4">4 - Very Good</option>
+            <option value="5">5 - Excellent</option>
+        </select>
+
+        <label>Efficiency:</label>
+        <select name="Efficiency">
+            <option value="1">1 - Poor</option>
+            <option value="2">2 - Fair</option>
+            <option value="3">3 - Good</option>
+            <option value="4">4 - Very Good</option>
+            <option value="5">5 - Excellent</option>
+        </select>
+
+        <label>Innovation:</label>
+        <select name="Innovation">
+            <option value="1">1 - Poor</option>
+            <option value="2">2 - Fair</option>
+            <option value="3">3 - Good</option>
+            <option value="4">4 - Very Good</option>
+            <option value="5">5 - Excellent</option>
+        </select>
+
+        <label>Communication:</label>
+        <select name="Communication">
+            <option value="1">1 - Poor</option>
+            <option value="2">2 - Fair</option>
+            <option value="3">3 - Good</option>
+            <option value="4">4 - Very Good</option>
+            <option value="5">5 - Excellent</option>
+        </select>
+
+        <label>Teamwork:</label>
+        <select name="Teamwork">
+            <option value="1">1 - Poor</option>
+            <option value="2">2 - Fair</option>
+            <option value="3">3 - Good</option>
+            <option value="4">4 - Very Good</option>
+            <option value="5">5 - Excellent</option>
+        </select>
+
+        <button type="submit">Submit Ratings</button>
+    </form>
+</body>
+</html>
