@@ -1,67 +1,34 @@
 import os
 
-# =======================
-# 🔧 CONFIGURATION
-# =======================
-SEARCH_KEYWORD = "ABC"       # Text to search for in folder names (case-insensitive)
-RENAME_TO = "App"            # New name if renaming is enabled
-CHECK_ONLY = True             # ✅ True = only check and list (no rename)
-RECURSIVE_SEARCH = True       # ✅ True = search in all subfolders, False = top level only
-# =======================
+# -----------------------------
+# PARAMETERS (you only edit here)
+# -----------------------------
+BASE_PATH = os.path.expanduser(r"OneDrive")  # Replace with full OneDrive path if needed
+SEARCH_KEYWORD = "ABC"                       # Folder name keyword to search for
+NEW_FOLDER_NAME = "App"                      # New name to rename matching folders
+# -----------------------------
 
+found_folders = []
 
-def find_onedrive_path():
-    """Detect the local OneDrive path (personal or business)."""
-    for var in ("OneDrive", "OneDriveCommercial", "OneDriveConsumer"):
-        path = os.environ.get(var)
-        if path and os.path.isdir(path):
-            return path
-    return None
+# Walk through the directory tree
+for root, dirs, files in os.walk(BASE_PATH):
+    for d in dirs:
+        if SEARCH_KEYWORD.lower() in d.lower():
+            old_path = os.path.join(root, d)
+            new_path = os.path.join(root, NEW_FOLDER_NAME)
+            
+            found_folders.append(old_path)
+            
+            # Rename the folder
+            try:
+                os.rename(old_path, new_path)
+                print(f"✅ Renamed: {old_path} → {new_path}")
+            except Exception as e:
+                print(f"⚠️ Could not rename {old_path}: {e}")
 
-
-def list_or_rename_folders():
-    """List (and optionally rename) folders based on parameters."""
-    onedrive_path = find_onedrive_path()
-    if not onedrive_path:
-        print("❌ OneDrive folder not found. Please ensure OneDrive is installed and synced.")
-        return
-
-    print(f"✅ OneDrive detected at: {onedrive_path}\n")
-    print(f"🔍 Searching for folders containing: '{SEARCH_KEYWORD}'")
-    print(f"🛠 Mode: {'Check Only' if CHECK_ONLY else 'Rename'}")
-    print(f"🔁 Recursive Search: {'Enabled' if RECURSIVE_SEARCH else 'Top Level Only'}\n")
-
-    matching_folders = []
-
-    # Choose between recursive and top-level search
-    if RECURSIVE_SEARCH:
-        walker = os.walk(onedrive_path)
-    else:
-        walker = [(onedrive_path, next(os.walk(onedrive_path))[1], [])]
-
-    for root, dirs, _ in walker:
-        for folder_name in dirs:
-            if SEARCH_KEYWORD.lower() in folder_name.lower():
-                full_path = os.path.join(root, folder_name)
-                matching_folders.append(full_path)
-
-                if CHECK_ONLY:
-                    print(f"📁 Found folder: {full_path}")
-                else:
-                    new_path = os.path.join(root, RENAME_TO)
-                    try:
-                        os.rename(full_path, new_path)
-                        print(f"✅ Renamed: {full_path} → {new_path}")
-                    except Exception as e:
-                        print(f"❌ Failed to rename '{folder_name}': {e}")
-
-    if not matching_folders:
-        print(f"ℹ️ No folders found containing '{SEARCH_KEYWORD}'.")
-    elif CHECK_ONLY:
-        print(f"\n📊 Total folders found: {len(matching_folders)} (no changes made)")
-    else:
-        print(f"\n✅ Total folders renamed: {len(matching_folders)}")
-
-
-if __name__ == "__main__":
-    list_or_rename_folders()
+# Summary
+print("\n--- SUMMARY ---")
+if found_folders:
+    print(f"Total folders found containing '{SEARCH_KEYWORD}': {len(found_folders)}")
+else:
+    print(f"No folders found containing '{SEARCH_KEYWORD}'.")
