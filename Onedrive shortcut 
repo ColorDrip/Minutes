@@ -1,26 +1,20 @@
 import os
-import win32com.client
 
-# --- Step 1: Define the OneDrive folder path ---
-# Replace this path with your actual OneDrive folder path.
-# You can usually find it under: C:\Users\<YourUserName>\OneDrive\
-onedrive_folder_path = os.path.expanduser(r"~\OneDrive\App")  
+# Replace this with your actual OneDrive web URL
+onedrive_web_url = "https://onedrive.live.com/?id=YOUR_FOLDER_ID&cid=YOUR_CID"
 
-# Ensure the folder exists, or create it
-if not os.path.exists(onedrive_folder_path):
-    os.makedirs(onedrive_folder_path)
-    print(f"📁 Created folder: {onedrive_folder_path}")
+# Get the path to the desktop
+desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
 
-# --- Step 2: Define shortcut details ---
-desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-shortcut_path = os.path.join(desktop, "App.lnk")
+# Create a folder called 'App' on the desktop
+app_folder_path = os.path.join(desktop_path, "App")
+os.makedirs(app_folder_path, exist_ok=True)
 
-# --- Step 3: Create the shortcut using Windows Script Host ---
-shell = win32com.client.Dispatch("WScript.Shell")
-shortcut = shell.CreateShortCut(shortcut_path)
-shortcut.Targetpath = onedrive_folder_path      # Folder to open
-shortcut.WorkingDirectory = onedrive_folder_path
-shortcut.IconLocation = "explorer.exe,0"        # File Explorer icon
-shortcut.save()
+# Path for the shortcut file
+shortcut_path = os.path.join(app_folder_path, "OneDrive Shortcut.url")
 
-print(f"✅ Shortcut created successfully on Desktop: {shortcut_path}")
+# Create the .url shortcut
+with open(shortcut_path, "w") as shortcut:
+    shortcut.write(f"[InternetShortcut]\nURL={onedrive_web_url}\n")
+
+print(f"Shortcut created successfully: {shortcut_path}")
