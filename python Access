@@ -1,0 +1,25 @@
+import pyodbc
+from flask import Flask, render_template, request
+
+app = Flask(__name__)
+
+def get_db_connection():
+    return pyodbc.connect(r'DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=C:\path\yourdb.accdb;')
+
+@app.route('/')
+def index():
+    return render_template('scorecard.html')
+
+@app.route('/submit', methods=['POST'])
+def submit():
+    ratings = request.form.to_dict()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    for param, value in ratings.items():
+        cursor.execute("INSERT INTO tblRatings (ParameterName, RatingValue) VALUES (?, ?)", (param, value))
+    conn.commit()
+    conn.close()
+    return "Ratings saved successfully!"
+
+if __name__ == '__main__':
+    app.run(debug=True)
