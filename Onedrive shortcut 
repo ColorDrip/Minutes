@@ -1,31 +1,34 @@
 import os
-import win32com.client
+import re
 
-def create_onedrive_shortcut():
-    # Detect OneDrive folder (personal or business)
+def detect_and_rename_onedrive_folder():
+    # Step 1: Detect OneDrive folder (personal or business)
     onedrive_path = os.environ.get("OneDrive") or os.environ.get("OneDriveCommercial")
 
     if not onedrive_path:
-        print("⚠️ OneDrive folder not found. Please ensure OneDrive is synced on your system.")
+        print("⚠️ OneDrive folder not found. Make sure OneDrive is configured and running.")
         return
 
-    # Create folder on Desktop
-    desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-    app_folder = os.path.join(desktop, "App")
-    os.makedirs(app_folder, exist_ok=True)
+    # Step 2: Try to extract employee ID from folder name (if it contains digits or ID pattern)
+    match = re.search(r"(\d{4,})", onedrive_path)  # e.g. look for something like 1234 or employee number
+    employee_id = match.group(1) if match else "Unknown"
 
-    # Shortcut name and path
-    shortcut_path = os.path.join(app_folder, "OneDrive Shortcut.lnk")
+    print(f"✅ OneDrive folder detected:")
+    print(f"   📁 Location: {onedrive_path}")
+    print(f"   🆔 Employee ID: {employee_id}")
 
-    # Create a Windows Shell shortcut
-    shell = win32com.client.Dispatch("WScript.Shell")
-    shortcut = shell.CreateShortCut(shortcut_path)
-    shortcut.Targetpath = onedrive_path  # Folder path
-    shortcut.WorkingDirectory = onedrive_path
-    shortcut.IconLocation = "shell32.dll,3"  # Folder icon
-    shortcut.save()
+    # Step 3: Check if any subfolder contains 'ABC' and rename it to 'App'
+    renamed = False
+    for folder_name in os.listdir(onedrive_path):
+        folder_path = os.path.join(onedrive_path, folder_name)
+        if os.path.isdir(folder_path) and 'abc' in folder_name.lower():
+            new_folder_path = os.path.join(onedrive_path, "App")
+            os.rename(folder_path, new_folder_path)
+            renamed = True
+            print(f"🔄 Renamed folder '{folder_name}' → 'App'")
+            break
 
-    print(f"✅ Shortcut created successfully at: {shortcut_path}")
-    print(f"📂 It points to: {onedrive_path}")
+    if not renamed:
+        print("ℹ️ No folder containing 'ABC' found inside OneDrive folder.")
 
-create_onedrive_shortcut()
+detect_and_rename_onedrive_folder()
