@@ -1,34 +1,35 @@
 import os
-import re
 
-def detect_and_rename_onedrive_folder():
-    # Step 1: Detect OneDrive folder (personal or business)
-    onedrive_path = os.environ.get("OneDrive") or os.environ.get("OneDriveCommercial")
+def find_onedrive_path():
+    """Find the user's local OneDrive path."""
+    for var in ("OneDrive", "OneDriveCommercial", "OneDriveConsumer"):
+        path = os.environ.get(var)
+        if path and os.path.isdir(path):
+            return path
+    return None
+
+def list_abc_folders():
+    onedrive_path = find_onedrive_path()
 
     if not onedrive_path:
-        print("⚠️ OneDrive folder not found. Make sure OneDrive is configured and running.")
+        print("❌ OneDrive folder not found. Please ensure OneDrive is installed and synced.")
         return
 
-    # Step 2: Try to extract employee ID from folder name (if it contains digits or ID pattern)
-    match = re.search(r"(\d{4,})", onedrive_path)  # e.g. look for something like 1234 or employee number
-    employee_id = match.group(1) if match else "Unknown"
+    print(f"✅ OneDrive detected at: {onedrive_path}\n")
 
-    print(f"✅ OneDrive folder detected:")
-    print(f"   📁 Location: {onedrive_path}")
-    print(f"   🆔 Employee ID: {employee_id}")
+    # Look for folders in the top level of OneDrive that contain 'ABC' (case-insensitive)
+    matching_folders = [
+        os.path.join(onedrive_path, name)
+        for name in os.listdir(onedrive_path)
+        if os.path.isdir(os.path.join(onedrive_path, name)) and "abc" in name.lower()
+    ]
 
-    # Step 3: Check if any subfolder contains 'ABC' and rename it to 'App'
-    renamed = False
-    for folder_name in os.listdir(onedrive_path):
-        folder_path = os.path.join(onedrive_path, folder_name)
-        if os.path.isdir(folder_path) and 'abc' in folder_name.lower():
-            new_folder_path = os.path.join(onedrive_path, "App")
-            os.rename(folder_path, new_folder_path)
-            renamed = True
-            print(f"🔄 Renamed folder '{folder_name}' → 'App'")
-            break
+    if matching_folders:
+        print(f"📁 Found {len(matching_folders)} folder(s) containing 'ABC':\n")
+        for folder in matching_folders:
+            print(f"   • {folder}")
+    else:
+        print("ℹ️ No folders found with 'ABC' in their names.")
 
-    if not renamed:
-        print("ℹ️ No folder containing 'ABC' found inside OneDrive folder.")
-
-detect_and_rename_onedrive_folder()
+if __name__ == "__main__":
+    list_abc_folders()
