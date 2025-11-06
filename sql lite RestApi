@@ -1,83 +1,117 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template_string, jsonify, redirect, url_for
 import sqlite3
+import webbrowser
+import threading
 
 app = Flask(__name__)
 
-db_path = r"data.db"
+# --- Initialize SQLite database ---
+def init_db():
+    conn = sqlite3.connect('ratings.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS ratings
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  name TEXT NOT NULL,
+                  rating INTEGER NOT NULL)''')
+    conn.commit()
+    conn.close()
 
-def get_connection():
-    return sqlite3.connect(db_path, check_same_thread=False)
+init_db()
 
-HTML_PAGE = '''
+# --- HTML Template ---
+HTML = '''
 <!DOCTYPE html>
 <html>
 <head>
     <title>User Ratings</title>
-    <meta http-equiv="refresh" content="10"> <!-- auto-refresh every 10 seconds -->
     <style>
-        body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 40px; text-align: center; }
-        h2 { color: #333; }
-        form { display: inline-block; background: white; padding: 20px 30px; border-radius: 12px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        input[type=text], input[type=number] { padding: 8px; margin: 8px; border: 1px solid #ccc; border-radius: 5px; width: 150px; }
-        input[type=submit] { background-color: #4CAF50; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
-        input[type=submit]:hover { background-color: #45a049; }
-        table { margin: 20px auto; border-collapse: collapse; width: 50%; background: white; box-shadow: 0 0 8px rgba(0,0,0,0.1); }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-        th { background-color: #f2f2f2; }
-        .thanks { margin-top: 20px; color: #333; }
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f8f9fa; }
+        .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+        input, select, button { width: 100%; padding: 8px; margin: 6px 0; border-radius: 5px; border: 1px solid #ccc; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #007BFF; color: white; }
     </style>
 </head>
 <body>
-
+<div class="container">
     <h2>Submit Your Rating</h2>
-    <form method="post" action="/">
+    <form method="POST" action="{{ url_for('submit_rating') }}">
         <input type="text" name="name" placeholder="Enter your name" required>
-        <input type="number" name="rating" min="1" max="5" placeholder="1-5" required>
-        <input type="submit" value="Submit">
+        <select name="rating" required>
+            <option value="">Select rating</option>
+            <option>1</option><option>2</option><option>3</option>
+            <option>4</option><option>5</option>
+        </select>
+        <button type="submit">Submit</button>
     </form>
 
-    {% if last_name %}
-        <div class="thanks">
-            <h3>Thank you, {{ last_name }}!</h3>
-            <p>You submitted a rating of <strong>{{ last_rating }}</strong>.</p>
-        </div>
-    {% endif %}
+    <h3>All Submitted Ratings</h3>
+    <table id="ratingsTable">
+        <tr><th>Name</th><th>Rating</th></tr>
+        {% for row in ratings %}
+            <tr><td>{{ row[0] }}</td><td>{{ row[1] }}</td></tr>
+        {% endfor %}
+    </table>
+</div>
 
-    {% if all_ratings %}
-        <h3>All Submitted Ratings</h3>
-        <table>
-            <tr><th>Name</th><th>Rating</th></tr>
-            {% for row in all_ratings %}
-                <tr><td>{{ row[0] }}</td><td>{{ row[1] }}</td></tr>
-            {% endfor %}
-        </table>
-    {% endif %}
-
+<script>
+// --- Fetch ratings every 5 seconds ---
+function fetchRatings() {
+    fetch('/get_ratings')
+        .then(response => response.json())
+        .then(data => {
+            const table = document.getElementById('ratingsTable');
+            table.innerHTML = '<tr><th>Name</th><th>Rating</th></tr>';
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${row.name}</td><td>${row.rating}</td>`;
+                table.appendChild(tr);
+            });
+        });
+}
+fetchRatings();
+setInterval(fetchRatings, 5000);
+</script>
 </body>
 </html>
 '''
 
-@app.route('/', methods=['GET', 'POST'])
+# --- Routes ---
+@app.route('/')
 def index():
-    last_name = None
-    last_rating = None
+    conn = sqlite3.connect('ratings.db')
+    c = conn.cursor()
+    c.execute("SELECT name, rating FROM ratings ORDER BY id DESC")
+    ratings = c.fetchall()
+    conn.close()
+    return render_template_string(HTML, ratings=ratings)
 
-    if request.method == 'POST':
-        name = request.form['name']
-        rating = int(request.form['rating'])
-        with get_connection() as conn:
-            conn.execute("INSERT INTO ratings (name, rating) VALUES (?, ?)", (name, rating))
-            conn.commit()
-        last_name = name
-        last_rating = rating
+@app.route('/get_ratings')
+def get_ratings():
+    conn = sqlite3.connect('ratings.db')
+    c = conn.cursor()
+    c.execute("SELECT name, rating FROM ratings ORDER BY id DESC")
+    rows = c.fetchall()
+    conn.close()
+    return jsonify([{'name': r[0], 'rating': r[1]} for r in rows])
 
-    # Always open a new connection for reading
-    with get_connection() as conn:
-        cursor = conn.execute("SELECT name, rating FROM ratings ORDER BY id DESC")
-        all_ratings = cursor.fetchall()
+@app.route('/submit', methods=['POST'])
+def submit_rating():
+    name = request.form['name']
+    rating = request.form['rating']
+    conn = sqlite3.connect('ratings.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO ratings (name, rating) VALUES (?, ?)", (name, rating))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('index'))
 
-    return render_template_string(HTML_PAGE, last_name=last_name, last_rating=last_rating, all_ratings=all_ratings)
-
+# --- Launch browser automatically ---
+def open_browser():
+    webbrowser.open_new("http://127.0.0.1:5000/")
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Start Flask in a thread so browser opens after server starts
+    threading.Timer(1.5, open_browser).start()
+    app.run(debug=False)
