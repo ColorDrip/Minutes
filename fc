@@ -1,121 +1,145 @@
-Here's a polished prompt you can use with a coding AI to generate a professional BPMN web application:
+Here's a stronger version of your prompt that explicitly instructs the AI to generate a single self-contained HTML file.
 
-Build a professional web-based BPMN Process Designer using HTML, CSS, JavaScript, and BPMN.io. The application should have an enterprise-grade UI/UX similar to commercial BPMN tools.
+Generate a complete, production-quality BPMN Process Designer as one single HTML file only.
 
-Core Requirements
+Important output requirements:
 
-- Use BPMN.io as the rendering and editing engine.
-- Modern, responsive interface with professional styling.
-- Clean toolbar, property panel, zoom controls, minimap, and status bar.
-- Support drag-and-drop BPMN modeling.
-- Auto-save and manual save.
-- Import and export BPMN (.bpmn) files.
-- Export diagram as PNG, SVG, and PDF.
-- Undo/Redo.
-- Keyboard shortcuts.
-- Dark and Light themes.
+- Return only the HTML code.
+- The response must start with "<!DOCTYPE html>" (or "<html>") and end with "</html>".
+- Do not provide explanations, markdown, code fences, or additional text before or after the HTML.
+- Everything must be contained in this single HTML file.
+- You may use CDN links for libraries such as BPMN.io and any other open-source JavaScript/CSS libraries.
+- All custom HTML, CSS, and JavaScript must be embedded inside this single HTML document.
+- The generated HTML should be directly savable as "index.html" and run immediately in a browser.
+
+Technology
+
+- HTML5
+- CSS3
+- Vanilla JavaScript (ES6+)
+- BPMN.io (via CDN)
+- Any required open-source CDN libraries that improve layout, animation, or user experience.
+
+Objective
+
+Create a professional, enterprise-grade BPMN Process Designer comparable to commercial BPMN modeling tools.
+
+Features
+
+- BPMN 2.0 editor
+- Professional modern UI
+- Responsive layout
+- Drag-and-drop modeling
+- Property panel
+- Toolbar
+- Context menus
+- Undo/Redo
+- Copy/Paste
+- Multi-select
+- Search
+- Keyboard shortcuts
+- Dark/Light mode
+- Auto-save
+- Import BPMN
+- Export BPMN
+- Export PNG
+- Export SVG
+- Export PDF
 
 Smart Layout
 
-- Auto-arrange BPMN elements.
-- Prevent overlapping of tasks, gateways, events, and annotations.
-- Maintain proper spacing between objects.
-- Automatically reroute connectors for clean diagrams.
-- Keep labels readable and centered.
-- Automatically resize pools and lanes.
-- Support "Fit to Screen", "Fit Width", "Fit Height", and "Zoom to Selection".
-- Infinite canvas with smooth pan and zoom.
-- Snap-to-grid and alignment guides.
+Implement intelligent automatic layout:
+
+- No overlapping BPMN objects.
+- Maintain proper spacing.
+- Auto-align objects.
+- Auto-route connectors.
+- Keep labels readable.
+- Resize pools and lanes automatically.
+- Snap-to-grid.
+- Alignment guides.
+- Auto-organize diagrams after editing.
+
+Canvas
+
+- Infinite canvas.
+- Smooth pan and zoom.
+- Mouse wheel zoom.
+- Mini-map.
+- Zoom controls.
+- Fit to Screen.
+- Fit Width.
+- Fit Height.
+- Zoom to Selection.
+- Center Diagram.
 
 BPMN Support
 
-Support all standard BPMN 2.0 elements including:
+Support all BPMN 2.0 elements:
 
-- Start Events
-- End Events
-- Intermediate Events
+- Events
 - Tasks
-- User Tasks
-- Service Tasks
-- Manual Tasks
-- Script Tasks
-- Business Rule Tasks
-- Gateways (Exclusive, Inclusive, Parallel, Event-based)
-- Sub-processes
+- Gateways
 - Pools
 - Lanes
+- Sub-processes
+- Sequence Flows
+- Message Flows
+- Associations
 - Data Objects
 - Data Stores
 - Groups
 - Text Annotations
-- Sequence Flows
-- Message Flows
-- Associations
+- Boundary Events
+- Intermediate Events
+- Event Sub-processes
 
-Animation & Simulation
+Simulation
 
-Provide a simulation mode where:
+Include an execution simulator:
 
-- A token animates through the process.
-- Tokens move smoothly along sequence flows.
-- Active tasks are highlighted.
-- Completed tasks change color.
-- Current execution path is clearly visible.
-- Multiple parallel tokens are supported.
-- Adjustable playback speed (0.5x, 1x, 2x, 5x).
-- Pause, Resume, Stop, Restart controls.
-- Display execution statistics such as completed activities, elapsed time, and current node.
-
-Intelligent Connections
-
-- Auto-connect BPMN elements.
-- Avoid crossing connectors where possible.
-- Automatically adjust routing when objects move.
-- Keep connectors visually clean and professional.
+- Animated tokens moving through sequence flows.
+- Highlight active tasks.
+- Change color of completed tasks.
+- Support multiple tokens.
+- Parallel gateway execution.
+- Pause.
+- Resume.
+- Stop.
+- Restart.
+- Adjustable playback speed.
+- Execution statistics.
+- Animated flow lines.
 
 User Experience
 
 - Smooth animations.
-- Responsive design for desktop and tablet.
-- Context menus on right click.
-- Drag-select multiple elements.
-- Copy/Paste/Duplicate/Delete.
-- Multi-select editing.
-- Inline label editing.
-- Search nodes by name.
-- Mini-map navigation.
-
-Properties Panel
-
-Editable properties for every BPMN element:
-
-- Name
-- ID
-- Documentation
-- Execution settings
-- Custom attributes
-- Colors
-- Icons
-- Conditions
-- Participants
-- Variables
+- Professional icons.
+- Modern typography.
+- Beautiful color palette.
+- Clean spacing.
+- Enterprise dashboard appearance.
+- Fast performance.
+- Handle large diagrams efficiently.
 
 Validation
 
-- Validate BPMN before export.
-- Highlight modeling errors.
-- Display descriptive validation messages.
-- Warn about disconnected elements or missing Start/End events.
+- BPMN validation.
+- Detect disconnected elements.
+- Detect missing start/end events.
+- Display validation messages.
+- Highlight errors visually.
 
 Code Quality
 
-- Modular JavaScript architecture.
-- Well-commented code.
-- Separate HTML, CSS, and JavaScript files.
-- Easy to extend.
-- Optimized for performance with large diagrams.
-- Follow modern ES6+ standards.
+- Well structured.
+- Easy to maintain.
+- Modular JavaScript inside the HTML.
+- Well-commented.
+- Optimized performance.
+- No duplicate code.
+- Clean architecture.
 
-Final Deliverable
+Deliverable
 
-Produce a complete working application that feels comparable to professional BPMN tools. The interface should be polished, intuitive, visually appealing, and capable of handling complex enterprise process diagrams without overlapping elements. Ensure the generated code is production-ready, fully functional, and easy to customize.This prompt is suitable for tools like ChatGPT, Claude, Gemini, or GitHub Copilot to generate a high-quality BPMN designer application.
+Return exactly one complete HTML document that starts with "<!DOCTYPE html>" (or "<html>") and ends with "</html>". The HTML should be immediately runnable by saving it as "index.html", without requiring any additional files other than external CDN resources. Do not include explanations, markdown, or any text outside the HTML document.This prompt is optimized for "vibe coding" tools and maximizes the chances of getting a single, ready-to-run HTML file that you can save directly as index.html.
