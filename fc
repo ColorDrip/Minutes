@@ -1,0 +1,121 @@
+Here's a polished prompt you can use with a coding AI to generate a professional BPMN web application:
+
+Build a professional web-based BPMN Process Designer using HTML, CSS, JavaScript, and BPMN.io. The application should have an enterprise-grade UI/UX similar to commercial BPMN tools.
+
+Core Requirements
+
+- Use BPMN.io as the rendering and editing engine.
+- Modern, responsive interface with professional styling.
+- Clean toolbar, property panel, zoom controls, minimap, and status bar.
+- Support drag-and-drop BPMN modeling.
+- Auto-save and manual save.
+- Import and export BPMN (.bpmn) files.
+- Export diagram as PNG, SVG, and PDF.
+- Undo/Redo.
+- Keyboard shortcuts.
+- Dark and Light themes.
+
+Smart Layout
+
+- Auto-arrange BPMN elements.
+- Prevent overlapping of tasks, gateways, events, and annotations.
+- Maintain proper spacing between objects.
+- Automatically reroute connectors for clean diagrams.
+- Keep labels readable and centered.
+- Automatically resize pools and lanes.
+- Support "Fit to Screen", "Fit Width", "Fit Height", and "Zoom to Selection".
+- Infinite canvas with smooth pan and zoom.
+- Snap-to-grid and alignment guides.
+
+BPMN Support
+
+Support all standard BPMN 2.0 elements including:
+
+- Start Events
+- End Events
+- Intermediate Events
+- Tasks
+- User Tasks
+- Service Tasks
+- Manual Tasks
+- Script Tasks
+- Business Rule Tasks
+- Gateways (Exclusive, Inclusive, Parallel, Event-based)
+- Sub-processes
+- Pools
+- Lanes
+- Data Objects
+- Data Stores
+- Groups
+- Text Annotations
+- Sequence Flows
+- Message Flows
+- Associations
+
+Animation & Simulation
+
+Provide a simulation mode where:
+
+- A token animates through the process.
+- Tokens move smoothly along sequence flows.
+- Active tasks are highlighted.
+- Completed tasks change color.
+- Current execution path is clearly visible.
+- Multiple parallel tokens are supported.
+- Adjustable playback speed (0.5x, 1x, 2x, 5x).
+- Pause, Resume, Stop, Restart controls.
+- Display execution statistics such as completed activities, elapsed time, and current node.
+
+Intelligent Connections
+
+- Auto-connect BPMN elements.
+- Avoid crossing connectors where possible.
+- Automatically adjust routing when objects move.
+- Keep connectors visually clean and professional.
+
+User Experience
+
+- Smooth animations.
+- Responsive design for desktop and tablet.
+- Context menus on right click.
+- Drag-select multiple elements.
+- Copy/Paste/Duplicate/Delete.
+- Multi-select editing.
+- Inline label editing.
+- Search nodes by name.
+- Mini-map navigation.
+
+Properties Panel
+
+Editable properties for every BPMN element:
+
+- Name
+- ID
+- Documentation
+- Execution settings
+- Custom attributes
+- Colors
+- Icons
+- Conditions
+- Participants
+- Variables
+
+Validation
+
+- Validate BPMN before export.
+- Highlight modeling errors.
+- Display descriptive validation messages.
+- Warn about disconnected elements or missing Start/End events.
+
+Code Quality
+
+- Modular JavaScript architecture.
+- Well-commented code.
+- Separate HTML, CSS, and JavaScript files.
+- Easy to extend.
+- Optimized for performance with large diagrams.
+- Follow modern ES6+ standards.
+
+Final Deliverable
+
+Produce a complete working application that feels comparable to professional BPMN tools. The interface should be polished, intuitive, visually appealing, and capable of handling complex enterprise process diagrams without overlapping elements. Ensure the generated code is production-ready, fully functional, and easy to customize.This prompt is suitable for tools like ChatGPT, Claude, Gemini, or GitHub Copilot to generate a high-quality BPMN designer application.
