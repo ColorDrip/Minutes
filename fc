@@ -1,145 +1,84 @@
-Here's a stronger version of your prompt that explicitly instructs the AI to generate a single self-contained HTML file.
 
-Generate a complete, production-quality BPMN Process Designer as one single HTML file only.
 
-Important output requirements:
+You are a Principal BPMN Software Architect, Senior Front-End Engineer, and Expert BPMN.io Developer with 20+ years of experience building enterprise workflow modeling applications.
 
-- Return only the HTML code.
-- The response must start with "<!DOCTYPE html>" (or "<html>") and end with "</html>".
-- Do not provide explanations, markdown, code fences, or additional text before or after the HTML.
-- Everything must be contained in this single HTML file.
-- You may use CDN links for libraries such as BPMN.io and any other open-source JavaScript/CSS libraries.
-- All custom HTML, CSS, and JavaScript must be embedded inside this single HTML document.
-- The generated HTML should be directly savable as "index.html" and run immediately in a browser.
+Your task is to write a complete, production-ready application as ONE SINGLE HTML FILE.
 
-Technology
+Critical Instructions
 
-- HTML5
-- CSS3
-- Vanilla JavaScript (ES6+)
-- BPMN.io (via CDN)
-- Any required open-source CDN libraries that improve layout, animation, or user experience.
+- Output ONLY code.
+- Do NOT explain anything.
+- Do NOT use Markdown.
+- Do NOT wrap the code in triple backticks.
+- Begin with "<!DOCTYPE html>".
+- End with "</html>".
+- The response must contain nothing except the HTML document.
+- Embed all CSS and JavaScript inside the HTML.
+- You may use CDN libraries (BPMN.io and other open-source libraries).
+- The HTML must run immediately when saved as "index.html".
 
-Objective
+If the code exceeds the model's output limit
 
-Create a professional, enterprise-grade BPMN Process Designer comparable to commercial BPMN modeling tools.
+Do NOT shorten the code.
+Instead:
 
-Features
+- Stop exactly where the output limit is reached.
+- End the response with the text:
 
-- BPMN 2.0 editor
-- Professional modern UI
-- Responsive layout
-- Drag-and-drop modeling
+"<!-- CONTINUE PART 2 -->"
+
+When I reply Continue, resume from the exact next line without repeating any previous code.
+
+If another response is needed, end with:
+
+"<!-- CONTINUE PART 3 -->"
+
+Continue until the HTML document is fully completed and finally end with:
+
+"</html>"
+
+Never restart from the beginning.
+
+Build an enterprise-grade BPMN Designer with:
+
+- BPMN.io
+- Professional UI
+- Modern toolbar
 - Property panel
-- Toolbar
-- Context menus
+- Minimap
+- Infinite canvas
+- Fit to Screen
+- Zoom controls
+- Auto Layout
+- No overlapping objects
+- Smart connector routing
+- Grid snapping
+- Import/Export BPMN
+- Export PNG/SVG/PDF
 - Undo/Redo
 - Copy/Paste
-- Multi-select
 - Search
-- Keyboard shortcuts
+- Multi-select
 - Dark/Light mode
-- Auto-save
-- Import BPMN
-- Export BPMN
-- Export PNG
-- Export SVG
-- Export PDF
-
-Smart Layout
-
-Implement intelligent automatic layout:
-
-- No overlapping BPMN objects.
-- Maintain proper spacing.
-- Auto-align objects.
-- Auto-route connectors.
-- Keep labels readable.
-- Resize pools and lanes automatically.
-- Snap-to-grid.
-- Alignment guides.
-- Auto-organize diagrams after editing.
-
-Canvas
-
-- Infinite canvas.
-- Smooth pan and zoom.
-- Mouse wheel zoom.
-- Mini-map.
-- Zoom controls.
-- Fit to Screen.
-- Fit Width.
-- Fit Height.
-- Zoom to Selection.
-- Center Diagram.
-
-BPMN Support
-
-Support all BPMN 2.0 elements:
-
-- Events
-- Tasks
-- Gateways
-- Pools
-- Lanes
-- Sub-processes
-- Sequence Flows
-- Message Flows
-- Associations
-- Data Objects
-- Data Stores
-- Groups
-- Text Annotations
-- Boundary Events
-- Intermediate Events
-- Event Sub-processes
+- Keyboard shortcuts
+- Responsive layout
 
 Simulation
 
-Include an execution simulator:
+Implement a workflow simulator with:
 
-- Animated tokens moving through sequence flows.
+- Animated execution tokens.
+- Token movement along sequence flows.
 - Highlight active tasks.
-- Change color of completed tasks.
-- Support multiple tokens.
-- Parallel gateway execution.
-- Pause.
-- Resume.
-- Stop.
-- Restart.
-- Adjustable playback speed.
+- Parallel execution.
+- Pause/Resume/Stop.
+- Speed control.
 - Execution statistics.
-- Animated flow lines.
-
-User Experience
-
-- Smooth animations.
-- Professional icons.
-- Modern typography.
-- Beautiful color palette.
-- Clean spacing.
-- Enterprise dashboard appearance.
-- Fast performance.
-- Handle large diagrams efficiently.
-
-Validation
-
-- BPMN validation.
-- Detect disconnected elements.
-- Detect missing start/end events.
-- Display validation messages.
-- Highlight errors visually.
+- Animated connectors.
 
 Code Quality
 
-- Well structured.
-- Easy to maintain.
-- Modular JavaScript inside the HTML.
-- Well-commented.
-- Optimized performance.
-- No duplicate code.
-- Clean architecture.
+Write clean, modular, production-quality JavaScript with excellent performance and maintainability.
 
-Deliverable
-
-Return exactly one complete HTML document that starts with "<!DOCTYPE html>" (or "<html>") and ends with "</html>". The HTML should be immediately runnable by saving it as "index.html", without requiring any additional files other than external CDN resources. Do not include explanations, markdown, or any text outside the HTML document.This prompt is optimized for "vibe coding" tools and maximizes the chances of getting a single, ready-to-run HTML file that you can save directly as index.html.
+Remember:
+Output only the HTML code. Never explain your work. Never summarize. Never omit features. Continue across multiple responses until the single HTML file is complete.One practical note: even with this prompt, ChatGPT and most coding models have a maximum response length. No prompt can force the model to emit an arbitrarily large file in a single response. The "Continue Part 2/3" approach is the most reliable way to generate very large HTML applications.
